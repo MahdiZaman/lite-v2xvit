@@ -7,6 +7,7 @@ from opencood.models.sub_modules.torch_transformation_utils import \
     get_transformation_matrix, warp_affine, get_roi_and_cav_mask, \
     get_discretized_transformation_matrix
 
+from pytorch_wavelets import DWT3D #DWTForward, DWTInverse
 
 class STTF(nn.Module):
     def __init__(self, args):
@@ -87,35 +88,34 @@ class V2XFusionBlock(nn.Module):
         self.num_blocks = num_blocks
 
         for _ in range(num_blocks):
-            att = HGTCavAttention(cav_att_config['dim'],
-                                  heads=cav_att_config['heads'],
-                                  dim_head=cav_att_config['dim_head'],
-                                  dropout=cav_att_config['dropout']) if \
-                cav_att_config['use_hetero'] else \
-                CavAttention(cav_att_config['dim'],
-                             heads=cav_att_config['heads'],
-                             dim_head=cav_att_config['dim_head'],
-                             dropout=cav_att_config['dropout'])
+            att =   HGTCavAttention(cav_att_config['dim'],
+                        heads=cav_att_config['heads'],
+                        dim_head=cav_att_config['dim_head'],
+                        dropout=cav_att_config['dropout']) if cav_att_config['use_hetero'] else \
+                    CavAttention(cav_att_config['dim'],
+                        heads=cav_att_config['heads'],
+                        dim_head=cav_att_config['dim_head'],
+                        dropout=cav_att_config['dropout'])      # point_pillar_v2xvit uses HGTCavAttention
             self.layers.append(nn.ModuleList([
-                PreNorm(cav_att_config['dim'], att),
-                PreNorm(cav_att_config['dim'],
-                        PyramidWindowAttention(pwindow_config['dim'],
-                                               heads=pwindow_config['heads'],
-                                               dim_heads=pwindow_config[
-                                                   'dim_head'],
-                                               drop_out=pwindow_config[
-                                                   'dropout'],
-                                               window_size=pwindow_config[
-                                                   'window_size'],
-                                               relative_pos_embedding=
-                                               pwindow_config[
-                                                   'relative_pos_embedding'],
-                                               fuse_method=pwindow_config[
-                                                   'fusion_method']))]))
+                        PreNorm(cav_att_config['dim'], att),
+                        PreNorm(cav_att_config['dim'], PyramidWindowAttention(pwindow_config['dim'],
+                                                                    heads=pwindow_config['heads'],
+                                                                    dim_heads=pwindow_config[
+                                                                        'dim_head'],
+                                                                    drop_out=pwindow_config[
+                                                                        'dropout'],
+                                                                    window_size=pwindow_config[
+                                                                        'window_size'],
+                                                                    relative_pos_embedding=
+                                                                    pwindow_config[
+                                                                        'relative_pos_embedding'],
+                                                                    fuse_method=pwindow_config[
+                                                                        'fusion_method']))]))
 
     def forward(self, x, mask, prior_encoding):
         for cav_attn, pwindow_attn in self.layers:
             x = cav_attn(x, mask=mask, prior_encoding=prior_encoding) + x
+            print(f'x.shape after cav_attn: {x.shape}')
             x = pwindow_attn(x) + x
         return x
 
@@ -145,36 +145,66 @@ class V2XTEncoder(nn.Module):
         self.layers = nn.ModuleList([])
         if self.use_RTE:
             self.rte = RTE(cav_att_config['dim'], self.RTE_ratio)
-        for _ in range(depth):
-            self.layers.append(nn.ModuleList([
-                V2XFusionBlock(num_blocks, cav_att_config, pwindow_att_config),
-                PreNorm(cav_att_config['dim'],
-                        FeedForward(cav_att_config['dim'], mlp_dim,
-                                    dropout=dropout))
-            ]))
+        for _ in range(depth): # depth = 3 in point_pillar_v2xvit
+            self.layers.append(nn.ModuleList([ 
+                            V2XFusionBlock(num_blocks, cav_att_config, pwindow_att_config), # num_blocks = 1 in point_pillar_v2xvit
+                            PreNorm(cav_att_config['dim'], FeedForward(cav_att_config['dim'], mlp_dim, dropout=dropout))
+                            ]))
+
+        # Initialize 3D DWT downsample layer
+        self.dwt_downsample = DWT3D(J=1, wave='db1', mode='symmetric')
 
     def forward(self, x, mask, spatial_correction_matrix):
+        print("------V2XTEncoder forward------")
 
         # transform the features to the current timestamp
         # velocity, time_delay, infra
-        # (B,L,H,W,3)
-        prior_encoding = x[..., -3:]
-        # (B,L,H,W,C)
-        x = x[..., :-3]
-        if self.use_RTE:
+        prior_encoding = x[..., -3:]        # (B,L,H,W,3) eg ([1, 2, 48, 176, 259])
+        x = x[..., :-3]     # (B,L,H,W,C) eg ([1, 2, 48, 176, 256])
+        '''
+        Last 3 channels of x are prior_encoding: probably velocity, time_delay, infra.
+        First 256 channels are the features (x).
+        '''
+
+        ## Relative Temporal Embedding
+        if self.use_RTE: 
             # dt: (B,L)
             dt = prior_encoding[:, :, 0, 0, 1].to(torch.int)
-            x = self.rte(x, dt)
-        x = self.sttf(x, mask, spatial_correction_matrix)
-        com_mask = mask.unsqueeze(1).unsqueeze(2).unsqueeze(
-            3) if not self.use_roi_mask else get_roi_and_cav_mask(x.shape,
-                                                                  mask,
-                                                                  spatial_correction_matrix,
-                                                                  self.discrete_ratio,
-                                                                  self.downsample_rate)
+            x = self.rte(x, dt)     # Does not change X shape
+
+            # print(f'x.shape after RTE: {x.shape}')
+        
+        ## STTF encoding (Spatio-Temporal Transformation Fusion)
+        x = self.sttf(x, mask, spatial_correction_matrix)    # (B,L,H,W,C) eg ([1, 2, 48, 176, 256])
+
+        com_mask = mask.unsqueeze(1).unsqueeze(2).unsqueeze(3) if not self.use_roi_mask else \
+                                                get_roi_and_cav_mask(x.shape, mask, spatial_correction_matrix,
+                                                                        self.discrete_ratio,
+                                                                        self.downsample_rate)
+
+        print(f'x.shape before entering layers: {x.shape}')
+        # Reshape x to combine batch and temporal dimensions
+        B, L, H, W, C = x.shape
+        x = x.view(B * L, H, W, C)  # (B*L, H, W, C)
+
+        # Apply 3D DWT to downsample x
+        x, _ = self.dwt_downsample(x)  # Apply DWT
+        print(f'x.shape before entering layers: {x_ds.shape}')
+        exit()
+        print(f'com_mask.shape: {com_mask.shape}')
+        print(f'prior_encoding.shape: {prior_encoding.shape}')
+        
+        '''
+        Jun28 -------- 
+        TODO : Apply Wavelet Transform here right before HGTCAVAttention 
+        Because HGTCAVAttention uses com_mask to specify which CAV talks to whom. 
+        Technically, this is the part where communication is modeled.
+        '''
         for attn, ff in self.layers:
             x = attn(x, mask=com_mask, prior_encoding=prior_encoding)
             x = ff(x) + x
+        print(f'x.shape after layers: {x.shape}')
+        exit() # -------------------------------------------------------------------------------------------
         return x
 
 

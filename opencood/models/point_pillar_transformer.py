@@ -83,11 +83,29 @@ class PointPillarTransformer(nn.Module):
                       'voxel_coords': voxel_coords,
                       'voxel_num_points': voxel_num_points,
                       'record_len': record_len}
+        
+        # print(f'batch_dict keys: {batch_dict.keys()}')
+        # print("batch_dict['voxel_features'].shape", batch_dict['voxel_features'].shape)
+
+        # voxel_feature [B', 32, 4] --> pillar_feature [B', 64]
         # n, 4 -> n, c
         batch_dict = self.pillar_vfe(batch_dict)
+
+        # print("batch_dict['voxel_features'].shape", batch_dict['voxel_features'].shape)
+        # print("batch_dict['pillar_features'].shape", batch_dict['pillar_features'].shape)
+
+        # pillar_feature [B', 64] --> spatial_feature [N, C, H, W]
         # n, c -> N, C, H, W
         batch_dict = self.scatter(batch_dict)
+
+        # print("batch_dict['spatial_features'].shape", batch_dict['spatial_features'].shape)
+        # print(f'batch_dict keys: {batch_dict.keys()}')
+        
+        # spatial_feature [B', 64] --> spatial_feature_2d [N, C, H, W]
         batch_dict = self.backbone(batch_dict)
+
+        # print("batch_dict['spatial_features_2d'].shape", batch_dict['spatial_features_2d'].shape)
+        # print(f'batch_dict keys: {batch_dict.keys()}')
 
         spatial_features_2d = batch_dict['spatial_features_2d']
         # downsample feature to reduce memory
@@ -96,10 +114,14 @@ class PointPillarTransformer(nn.Module):
         # compressor
         if self.compression:
             spatial_features_2d = self.naive_compressor(spatial_features_2d)
+
+        # Regroup the data based on record_len
         # N, C, H, W -> B,  L, C, H, W
         regroup_feature, mask = regroup(spatial_features_2d,
                                         record_len,
                                         self.max_cav)
+        # print(f'regroup_feature.shape: {regroup_feature.shape}')
+
         # prior encoding added
         prior_encoding = prior_encoding.repeat(1, 1, 1,
                                                regroup_feature.shape[3],
@@ -108,10 +130,20 @@ class PointPillarTransformer(nn.Module):
 
         # b l c h w -> b l h w c
         regroup_feature = regroup_feature.permute(0, 1, 3, 4, 2)
+
+        ### TODO Wavelet Transform can be applied at some layer in fusion_net=V2XTransformer
         # transformer fusion
+        print(f'regroup_feature.shape: {regroup_feature.shape}')
+        print(f'mask.shape: {mask.shape}')
+        print(f'spatial_correction_matrix.shape: {spatial_correction_matrix.shape}')
+        
+        # fusion_net  = V2XTransformer()
         fused_feature = self.fusion_net(regroup_feature, mask, spatial_correction_matrix)
+        ## Can't reach here due to cuda memory error in attn inside fusion_net 
+        print(f'fused_feature.shape: {fused_feature.shape}')
+        
         # b h w c -> b c h w
-        fused_feature = fused_feature.permute(0, 3, 1, 2)
+        fused_feature = fused_feature.permute(0, 3, 1, 2)        
 
         psm = self.cls_head(fused_feature)
         rm = self.reg_head(fused_feature)

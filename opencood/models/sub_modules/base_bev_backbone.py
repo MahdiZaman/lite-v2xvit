@@ -93,6 +93,11 @@ class BaseBEVBackbone(nn.Module):
         self.num_bev_features = c_in
 
     def forward(self, data_dict):
+        '''
+        Get spatial_features [N, C, H, W]
+        and
+        Transform to spatial_features_2d [N, C, H, W]
+        '''
         spatial_features = data_dict['spatial_features']
 
         ups = []

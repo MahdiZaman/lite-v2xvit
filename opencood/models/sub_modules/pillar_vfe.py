@@ -103,6 +103,10 @@ class PillarVFE(nn.Module):
         return paddings_indicator
 
     def forward(self, batch_dict):
+        '''
+        Get voxel_feature [B, 32, 4] and
+        Transform to pillar_feature [B, 64]
+        '''
 
         voxel_features, voxel_num_points, coords = \
             batch_dict['voxel_features'], batch_dict['voxel_num_points'], \

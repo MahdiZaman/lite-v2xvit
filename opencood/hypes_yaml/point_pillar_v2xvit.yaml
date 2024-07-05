@@ -1,5 +1,6 @@
 name: point_pillar_v2xvit
-root_dir: 'v2xset/train'
+# root_dir: 'v2xset/train'
+root_dir: 'v2xset/train_subset'
 validate_dir: 'v2xset/validate'
 
 wild_setting:
@@ -16,11 +17,11 @@ wild_setting:
 
 yaml_parser: "load_point_pillar_params"
 train_params:
-  batch_size: &batch_size 2
+  batch_size: &batch_size 1
   epoches: 60
   eval_freq: 1
   save_freq: 1
-  max_cav: &max_cav 5
+  max_cav: &max_cav 2
 
 fusion:
   core_method: 'IntermediateFusionDataset' # LateFusionDataset, EarlyFusionDataset, IntermediateFusionDataset supported

@@ -12,6 +12,11 @@ class PointPillarScatter(nn.Module):
         assert self.nz == 1
 
     def forward(self, batch_dict):
+        '''
+        Get pillar_features [n, c] 
+        and 
+        Transform to spatial_features [N, C, H, W]
+        '''
         pillar_features, coords = batch_dict['pillar_features'], batch_dict[
             'voxel_coords']
         batch_spatial_features = []

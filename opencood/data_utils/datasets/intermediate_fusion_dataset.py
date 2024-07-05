@@ -36,6 +36,7 @@ class IntermediateFusionDataset(basedataset.BaseDataset):
         # if project first, cav's lidar will first be projected to
         # the ego's coordinate frame. otherwise, the feature will be
         # projected instead.
+        print('loading intermediate fusion dataset')
         self.proj_first = True
         if 'proj_first' in params['fusion']['args'] and \
             not params['fusion']['args']['proj_first']:
@@ -54,29 +55,40 @@ class IntermediateFusionDataset(basedataset.BaseDataset):
             train)
 
     def __getitem__(self, idx):
-        base_data_dict = self.retrieve_base_data(idx,
-                                                 cur_ego_pose_flag=self.cur_ego_pose_flag)
+        base_data_dict = self.retrieve_base_data(idx, cur_ego_pose_flag=self.cur_ego_pose_flag)
+        
+        '''
+        base_data_dict keys are the subfolder names in date folders
+        eg 2021_09_09_19_27_35 -> (['15009', '15018', '15027', '-1']) 
+        '''
+        #print(f'base_data_dict.keys: {base_data_dict.keys()}')
+
 
         processed_data_dict = OrderedDict()
         processed_data_dict['ego'] = {}
 
-        ego_id = -1
+        ego_id = -1 # How2comm used RSU as ego. RSU ID in v2xset dataset is -1
+        # ego_id = 15009
         ego_lidar_pose = []
 
         # first find the ego vehicle's lidar pose
         for cav_id, cav_content in base_data_dict.items():
+            #print(cav_id, type(cav_content))
+            # continue
             if cav_content['ego']:
                 ego_id = cav_id
                 ego_lidar_pose = cav_content['params']['lidar_pose']
                 break
-        assert cav_id == list(base_data_dict.keys())[
-            0], "The first element in the OrderedDict must be ego"
+        # print(list(base_data_dict.keys())[0])
+        # print(cav_id)
+        assert cav_id == list(base_data_dict.keys())[0], \
+                            "The first element in the OrderedDict must be ego"
         assert ego_id != -1
         assert len(ego_lidar_pose) > 0
-
-        pairwise_t_matrix = \
-            self.get_pairwise_transformation(base_data_dict,
-                                             self.max_cav)
+        
+        pairwise_t_matrix = self.get_pairwise_transformation(base_data_dict, self.max_cav)
+        # print(f'unique in pairwise_t_matrix: {np.unique(pairwise_t_matrix)}') 
+        ### pairwise_t_matrix is just 0s and 1s if proj_first is True
 
         processed_features = []
         object_stack = []
@@ -91,7 +103,7 @@ class IntermediateFusionDataset(basedataset.BaseDataset):
 
         if self.visualize:
             projected_lidar_stack = []
-
+        # exit() # -------------------------------------------------------------------------------------------
         # loop over all CAVs to process information
         for cav_id, selected_cav_base in base_data_dict.items():
             # check if the cav is within the communication range with ego
@@ -187,6 +199,7 @@ class IntermediateFusionDataset(basedataset.BaseDataset):
         return processed_data_dict
 
     def get_item_single_car(self, selected_cav_base, ego_pose):
+        ### NOTE THIS FUNCTION
         """
         Project the lidar and bbx to ego space first, and then do clipping.
 
@@ -213,7 +226,7 @@ class IntermediateFusionDataset(basedataset.BaseDataset):
             self.post_processor.generate_object_center([selected_cav_base],
                                                        ego_pose)
 
-        # filter lidar
+        #### filter lidar
         lidar_np = selected_cav_base['lidar_np']
         lidar_np = shuffle_points(lidar_np)
         # remove points that hit itself
@@ -427,9 +440,15 @@ class IntermediateFusionDataset(basedataset.BaseDataset):
             The pairwise transformation matrix across each cav.
             shape: (L, L, 4, 4)
         """
+        
+        #print('base_data_dict.keys: ', base_data_dict.keys())
+        #print('max_cav: ', max_cav)
+
         pairwise_t_matrix = np.zeros((max_cav, max_cav, 4, 4))
+        #print('pairwise_t_matrix.shape: ', pairwise_t_matrix.shape)
 
         if self.proj_first:
+            # print('if')
             # if lidar projected to ego first, then the pairwise matrix
             # becomes identity
             pairwise_t_matrix[:, :] = np.identity(4)
@@ -452,3 +471,40 @@ class IntermediateFusionDataset(basedataset.BaseDataset):
                     pairwise_t_matrix[i, j] = t_matrix
 
         return pairwise_t_matrix
+
+
+
+if __name__ == '__main__':
+    import argparse
+    from __init__ import build_dataset
+    import opencood.hypes_yaml.yaml_utils as yaml_utils
+
+    parser = argparse.ArgumentParser(description="synthetic data generation")
+    parser.add_argument("--hypes_yaml", type=str, required=True,
+                        help='data generation yaml file needed ')
+    parser.add_argument('--model_dir', default='',
+                        help='Continued training path')
+    parser.add_argument("--half", action='store_true',
+                        help="whether train with half precision.")
+    parser.add_argument('--dist_url', default='env://',
+                        help='url used to set up distributed training')
+    opt = parser.parse_args()
+    hypes = yaml_utils.load_yaml(opt.hypes_yaml, opt)
+    #########################################################################################
+
+
+
+
+    opencood_train_dataset = build_dataset(hypes, visualize=False, train=True)
+    print('-----------------finished loading dataset------------------')
+    # print(len(opencood_train_dataset))
+
+    # print(opencood_train_dataset.__getitem__(0)['ego'].keys())
+    print(opencood_train_dataset.__getitem__(0)['ego']['processed_lidar'].keys())
+
+
+    # for key in opencood_train_dataset.__getitem__(0)['ego'].keys():
+    #     print(opencood_train_dataset.__getitem__(0)['ego'][key].shape)
+    # for i in range(10):
+    #     print(opencood_train_dataset[i])
+        # break
