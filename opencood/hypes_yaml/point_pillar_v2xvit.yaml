@@ -1,7 +1,7 @@
 name: point_pillar_v2xvit
-# root_dir: 'v2xset/train'
-root_dir: 'v2xset/train_subset'
-validate_dir: 'v2xset/validate'
+root_dir: '../data/v2xset/train'
+# root_dir: 'v2xset/train_subset'
+validate_dir: '../data/v2xset/validate'
 
 wild_setting:
   async: false
@@ -17,11 +17,11 @@ wild_setting:
 
 yaml_parser: "load_point_pillar_params"
 train_params:
-  batch_size: &batch_size 1
+  batch_size: &batch_size 2
   epoches: 60
   eval_freq: 1
   save_freq: 1
-  max_cav: &max_cav 2
+  max_cav: &max_cav 5
 
 fusion:
   core_method: 'IntermediateFusionDataset' # LateFusionDataset, EarlyFusionDataset, IntermediateFusionDataset supported
@@ -130,7 +130,7 @@ model:
           heads: [16, 8, 4]
           dim_head: [16, 32, 64]
           dropout: 0.3
-          window_size: [4, 8, 16]
+          window_size: [2, 4, 8] #[4, 8, 16] ### modified for wavelet attention ---
           relative_pos_embedding: true
           fusion_method: 'split_attn'
         # feedforward condition

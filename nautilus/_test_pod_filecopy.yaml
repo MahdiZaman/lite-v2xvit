@@ -1,0 +1,45 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: test-pod-filecopy
+spec:
+  # affinity:
+  #   nodeAffinity:
+  #     requiredDuringSchedulingIgnoredDuringExecution:
+  #       nodeSelectorTerms:
+  #       - matchExpressions:
+  #         - key: nvidia.com/gpu.product
+  #           operator: In
+  #           values:
+  #           - NVIDIA-RTX-A6000
+  containers:
+  - name: t-pod
+    image: ubuntu
+    volumeMounts:
+    - mountPath: /project
+      name: project
+    resources:
+      limits:
+        memory: 32Gi
+        cpu: "1"
+        # nvidia.com/a100: 2
+      requests:
+        memory: 32Gi
+        cpu: "1"
+        # nvidia.com/a100: 2
+    command: 
+      - "sh"
+      - "-c"
+      - |
+        apt update && \
+        apt install -y python3 python3-pip && \
+        apt install unzip && \
+        # cd /project/data/v2xset && \
+        # unzip -n train.zip && \
+        echo '===========Commands executed successfully.==========' && \
+        sleep 7200
+  volumes:
+    - name: project
+      persistentVolumeClaim:
+        claimName: cooppercpvc
+  restartPolicy: Never

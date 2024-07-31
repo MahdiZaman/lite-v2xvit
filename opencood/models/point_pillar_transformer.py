@@ -133,17 +133,18 @@ class PointPillarTransformer(nn.Module):
 
         ### TODO Wavelet Transform can be applied at some layer in fusion_net=V2XTransformer
         # transformer fusion
-        print(f'regroup_feature.shape: {regroup_feature.shape}')
-        print(f'mask.shape: {mask.shape}')
-        print(f'spatial_correction_matrix.shape: {spatial_correction_matrix.shape}')
+        # print(f'regroup_feature.shape: {regroup_feature.shape}')
+        # print(f'mask.shape: {mask.shape}')
+        # print(f'spatial_correction_matrix.shape: {spatial_correction_matrix.shape}')
         
         # fusion_net  = V2XTransformer()
         fused_feature = self.fusion_net(regroup_feature, mask, spatial_correction_matrix)
         ## Can't reach here due to cuda memory error in attn inside fusion_net 
-        print(f'fused_feature.shape: {fused_feature.shape}')
+        # print(f'fused_feature.shape in point_pillar_transformer: {fused_feature.shape}')
         
         # b h w c -> b c h w
         fused_feature = fused_feature.permute(0, 3, 1, 2)        
+        # print(f'fused_feature.shape in point_pillar_transformer: {fused_feature.shape}')
 
         psm = self.cls_head(fused_feature)
         rm = self.reg_head(fused_feature)
