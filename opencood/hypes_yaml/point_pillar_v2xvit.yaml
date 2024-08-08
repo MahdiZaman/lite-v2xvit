@@ -22,6 +22,7 @@ train_params:
   eval_freq: 1
   save_freq: 1
   max_cav: &max_cav 5
+  is_training_nautilus: true
 
 fusion:
   core_method: 'IntermediateFusionDataset' # LateFusionDataset, EarlyFusionDataset, IntermediateFusionDataset supported

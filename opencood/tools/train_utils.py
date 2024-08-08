@@ -79,10 +79,13 @@ def setup_train(hypes):
     folder_name = current_time.strftime("_%Y_%m_%d_%H_%M_%S")
     folder_name = model_name + folder_name
 
-    current_path = os.path.dirname(__file__)
-    current_path = os.path.join(current_path, '../logs')
+    if not hypes['train_params']['is_training_nautilus']:   # if running locally
+        current_path = os.path.dirname(__file__)
+        current_path = os.path.join(current_path, '../logs')
+        full_path = os.path.join(current_path, folder_name)
+    else:   # if running on nautilus
+        full_path = os.path.join('/project/results', folder_name)
 
-    full_path = os.path.join(current_path, folder_name)
 
     if not os.path.exists(full_path):
         if not os.path.exists(full_path):
@@ -95,6 +98,7 @@ def setup_train(hypes):
         with open(save_name, 'w') as outfile:
             yaml.dump(hypes, outfile)
 
+    print('Output files will be saved at %s' % full_path)
     return full_path
 
 
