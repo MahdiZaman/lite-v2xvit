@@ -1,7 +1,7 @@
 name: point_pillar_v2xvit
-root_dir: '../data/v2xset/train'
+root_dir: '/project/data/v2xset/train'
 # root_dir: 'v2xset/train_subset'
-validate_dir: '../data/v2xset/validate'
+validate_dir: '/project/data/v2xset/validate'
 
 wild_setting:
   async: false
