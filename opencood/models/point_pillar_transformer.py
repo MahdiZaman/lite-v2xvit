@@ -108,19 +108,27 @@ class PointPillarTransformer(nn.Module):
         # print(f'batch_dict keys: {batch_dict.keys()}')
 
         spatial_features_2d = batch_dict['spatial_features_2d']
+        
         # downsample feature to reduce memory
+        # print(f'spatial_features_2d.shape before shrink_flag: {spatial_features_2d.shape}')
         if self.shrink_flag:
             spatial_features_2d = self.shrink_conv(spatial_features_2d)
+        # print(f'spatial_features_2d.shape after shrink_flag: {spatial_features_2d.shape}')
+            
         # compressor
+        # print(f'spatial_features_2d.shape before compression: {spatial_features_2d.shape}')
         if self.compression:
             spatial_features_2d = self.naive_compressor(spatial_features_2d)
+        # print(f'spatial_features_2d.shape before compression: {spatial_features_2d.shape}')
+        # print(f'record_len: {record_len}')
+        # print(f'max_cav: {self.max_cav}')
 
         # Regroup the data based on record_len
         # N, C, H, W -> B,  L, C, H, W
         regroup_feature, mask = regroup(spatial_features_2d,
                                         record_len,
                                         self.max_cav)
-        # print(f'regroup_feature.shape: {regroup_feature.shape}')
+        
 
         # prior encoding added
         prior_encoding = prior_encoding.repeat(1, 1, 1,
@@ -131,14 +139,13 @@ class PointPillarTransformer(nn.Module):
         # b l c h w -> b l h w c
         regroup_feature = regroup_feature.permute(0, 1, 3, 4, 2)
 
-        ### TODO Wavelet Transform can be applied at some layer in fusion_net=V2XTransformer
-        # transformer fusion
         # print(f'regroup_feature.shape: {regroup_feature.shape}')
-        # print(f'mask.shape: {mask.shape}')
-        # print(f'spatial_correction_matrix.shape: {spatial_correction_matrix.shape}')
+        # print(f'mask.shape: {mask.shape}')        
         
+        # transformer fusion
         # fusion_net  = V2XTransformer()
         fused_feature = self.fusion_net(regroup_feature, mask, spatial_correction_matrix)
+        # exit()
         ## Can't reach here due to cuda memory error in attn inside fusion_net 
         # print(f'fused_feature.shape in point_pillar_transformer: {fused_feature.shape}')
         

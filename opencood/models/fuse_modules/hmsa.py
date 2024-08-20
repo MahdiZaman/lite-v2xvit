@@ -132,7 +132,11 @@ class HGTCavAttention(nn.Module):
             'b m h w i p, b m i j p q, bm h w j q -> b m h w i j',
             [q, w_att, k]) * self.scale
         # add mask
+        # print('att_map.shape before masked_fill', att_map.shape)
+        # print('mask.shape before', mask.shape)
         att_map = att_map.masked_fill(mask == 0, -float('inf'))
+        # print('att_map.shape after masked_fill', att_map.shape)
+        # exit()
         # softmax
         att_map = self.attend(att_map)
 

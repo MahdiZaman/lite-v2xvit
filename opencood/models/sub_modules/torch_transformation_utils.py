@@ -9,7 +9,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 def get_roi_and_cav_mask(shape, cav_mask, spatial_correction_matrix,
-                         discrete_ratio, downsample_rate):
+                         discrete_ratio, downsample_rate, do_wavelet):
     """
     Get mask for the combination of cav_mask and rorated ROI mask.
     Parameters
@@ -33,7 +33,8 @@ def get_roi_and_cav_mask(shape, cav_mask, spatial_correction_matrix,
     """
     B, L, H, W, C = shape
     C = 1
-    # (B,L,4,4)
+    
+    # (B,L,4,4) ## This transforms spatial_correction_matrix to 2D transformation matrix
     dist_correction_matrix = get_discretized_transformation_matrix(
         spatial_correction_matrix, discrete_ratio,
         downsample_rate)
@@ -41,9 +42,15 @@ def get_roi_and_cav_mask(shape, cav_mask, spatial_correction_matrix,
     T = get_transformation_matrix(
         dist_correction_matrix.reshape(-1, 2, 3), (H, W))
     # (B,L,1,H,W)
-    roi_mask = get_rotated_roi((B, L, C, H, W), T)
+    roi_mask = get_rotated_roi((B, L, C, H, W), T, do_wavelet)
+    # print(f'roi_mask.shape: {roi_mask.shape}')
+    # print(f'cav_mask.shape: {cav_mask.shape}')
     # (B,L,1,H,W)
     com_mask = combine_roi_and_cav_mask(roi_mask, cav_mask)
+    # print(f'com_mask.shape: {com_mask.shape}')
+    # print('--- get_roi_and_cav_mask DONE --- ')
+    
+    # exit()
     # (B,H,W,1,L)
     com_mask = com_mask.permute(0,3,4,2,1)
     return com_mask
@@ -74,7 +81,7 @@ def combine_roi_and_cav_mask(roi_mask, cav_mask):
     return com_mask
 
 
-def get_rotated_roi(shape, correction_matrix):
+def get_rotated_roi(shape, correction_matrix, do_wavelet):
     """
     Get rorated ROI mask.
 
@@ -92,17 +99,27 @@ def get_rotated_roi(shape, correction_matrix):
 
     """
     B, L, C, H, W = shape
+    
+    # print(f'B: {B}, L: {L}, C: {C}, H: {H}, W: {W}')
+    if do_wavelet:
+        H, W = H // 2, W // 2   # currently supporting level=2 wavelet decomposition only
+        
+    # print(f'B: {B}, L: {L}, C: {C}, H: {H}, W: {W}')
     # To reduce the computation, we only need to calculate the
     # mask for the first channel.
     # (B,L,1,H,W)
     x = torch.ones((B, L, 1, H, W)).to(correction_matrix.dtype).to(
         correction_matrix.device)
     # (B*L,1,H,W)
+    # print(f'x.shape: {x.shape}')
     roi_mask = warp_affine(x.reshape(-1, 1, H, W), correction_matrix,
                            dsize=(H, W), mode="nearest")
+    # print(f'roi_mask.shape 1: {roi_mask.shape}')
     # (B,L,C,H,W)
     roi_mask = torch.repeat_interleave(roi_mask, C, dim=1).reshape(B, L, C, H,
                                                                    W)
+    # print(f'roi_mask.shape 2: {roi_mask.shape}')
+    # exit()
     return roi_mask
 
 
@@ -127,10 +144,15 @@ def get_discretized_transformation_matrix(matrix, discrete_ratio,
         including 2D transformation and 2D rotation.
 
     """
+    # print("------------------get_discretized_transformation_matrix()------------------")
+    # print(f'matrix.shape 1: {matrix.shape}')
     matrix = matrix[:, :, [0, 1], :][:, :, :, [0, 1, 3]]
+    # print(f'matrix.shape 2: {matrix.shape}')
     # normalize the x,y transformation
     matrix[:, :, :, -1] = matrix[:, :, :, -1] \
                           / (discrete_ratio * downsample_rate)
+    # print(f'matrix.shape 3: {matrix.shape}')
+    # exit()
 
     return matrix.type(dtype=torch.float)
 

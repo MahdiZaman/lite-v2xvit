@@ -16,7 +16,6 @@ import opencood.hypes_yaml.yaml_utils as yaml_utils
 from opencood.tools import train_utils
 from opencood.tools import multi_gpu_utils
 from opencood.data_utils.datasets import build_dataset
-from opencood.tools import train_utils
 
 
 def train_parser():

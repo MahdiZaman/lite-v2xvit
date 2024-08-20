@@ -80,47 +80,7 @@ class RTE(nn.Module):
         return torch.cat(rte_batch, dim=0)
 
 
-# class V2XFusionBlock(nn.Module):
-#     def __init__(self, num_blocks, cav_att_config, pwindow_config):
-#         super().__init__()
-#         # first multi-agent attention and then multi-window attention
-#         self.layers = nn.ModuleList([])
-#         self.num_blocks = num_blocks
-
-#         for _ in range(num_blocks):
-#             att =   HGTCavAttention(cav_att_config['dim'],
-#                         heads=cav_att_config['heads'],
-#                         dim_head=cav_att_config['dim_head'],
-#                         dropout=cav_att_config['dropout']) if cav_att_config['use_hetero'] else \
-#                     CavAttention(cav_att_config['dim'],
-#                         heads=cav_att_config['heads'],
-#                         dim_head=cav_att_config['dim_head'],
-#                         dropout=cav_att_config['dropout'])      # point_pillar_v2xvit uses HGTCavAttention
-#             self.layers.append(nn.ModuleList([
-#                         PreNorm(cav_att_config['dim'], att),
-#                         PreNorm(cav_att_config['dim'], PyramidWindowAttention(pwindow_config['dim'],
-#                                                                     heads=pwindow_config['heads'],
-#                                                                     dim_heads=pwindow_config[
-#                                                                         'dim_head'],
-#                                                                     drop_out=pwindow_config[
-#                                                                         'dropout'],
-#                                                                     window_size=pwindow_config[
-#                                                                         'window_size'],
-#                                                                     relative_pos_embedding=
-#                                                                     pwindow_config[
-#                                                                         'relative_pos_embedding'],
-#                                                                     fuse_method=pwindow_config[
-#                                                                         'fusion_method']))]))
-
-#     def forward(self, x, mask, prior_encoding):
-#         for cav_attn, pwindow_attn in self.layers:
-#             x = cav_attn(x, mask=mask, prior_encoding=prior_encoding) + x
-#             print(f'x.shape after cav_attn: {x.shape}')
-#             x = pwindow_attn(x) + x
-#         return x
-
-
-class V2XFusionBlock(nn.Module):
+class V2XFusionBlock(nn.Module):    # with HGTCAVAttention
     def __init__(self, num_blocks, cav_att_config, pwindow_config):
         super().__init__()
         # first multi-agent attention and then multi-window attention
@@ -128,16 +88,16 @@ class V2XFusionBlock(nn.Module):
         self.num_blocks = num_blocks
 
         for _ in range(num_blocks):
-            # att =   HGTCavAttention(cav_att_config['dim'],
-            #             heads=cav_att_config['heads'],
-            #             dim_head=cav_att_config['dim_head'],
-            #             dropout=cav_att_config['dropout']) if cav_att_config['use_hetero'] else \
-            #         CavAttention(cav_att_config['dim'],
-            #             heads=cav_att_config['heads'],
-            #             dim_head=cav_att_config['dim_head'],
-            #             dropout=cav_att_config['dropout'])      # point_pillar_v2xvit uses HGTCavAttention
+            att =   HGTCavAttention(cav_att_config['dim'],
+                        heads=cav_att_config['heads'],
+                        dim_head=cav_att_config['dim_head'],
+                        dropout=cav_att_config['dropout']) if cav_att_config['use_hetero'] else \
+                    CavAttention(cav_att_config['dim'],
+                        heads=cav_att_config['heads'],
+                        dim_head=cav_att_config['dim_head'],
+                        dropout=cav_att_config['dropout'])      # point_pillar_v2xvit uses HGTCavAttention
             self.layers.append(nn.ModuleList([
-                        # PreNorm(cav_att_config['dim'], att),
+                        PreNorm(cav_att_config['dim'], att),
                         PreNorm(cav_att_config['dim'], PyramidWindowAttention(pwindow_config['dim'],
                                                                     heads=pwindow_config['heads'],
                                                                     dim_heads=pwindow_config[
@@ -153,14 +113,58 @@ class V2XFusionBlock(nn.Module):
                                                                         'fusion_method']))]))
 
     def forward(self, x, mask, prior_encoding):
-        # print(f'x.shape starting V2XFusionBlock ----------- : {x.shape}')
-        for pwindow_attn in self.layers:
-            # x = cav_attn(x, mask=mask, prior_encoding=prior_encoding) + x
+        for cav_attn, pwindow_attn in self.layers:
+            # print(f'x.shape before cav_attn: {x.shape}, mask.shape: {mask.shape}, prior_encoding.shape: {prior_encoding.shape}')
+            x = cav_attn(x, mask=mask, prior_encoding=prior_encoding) + x
             # print(f'x.shape after cav_attn: {x.shape}')
-            # x = pwindow_attn(x) + x
-            x = pwindow_attn[0](x) + x
-            #print(f'x.shape after pwindow_attn: {x.shape}')
+            x = pwindow_attn(x) + x
+            # print(f'x.shape after pwindow_attn: {x.shape}')
+            # exit()
         return x
+
+
+# class V2XFusionBlock(nn.Module):    # without HGTCAVAttention
+#     def __init__(self, num_blocks, cav_att_config, pwindow_config):
+#         super().__init__()
+#         # first multi-agent attention and then multi-window attention
+#         self.layers = nn.ModuleList([])
+#         self.num_blocks = num_blocks
+
+#         for _ in range(num_blocks):
+#             # att =   HGTCavAttention(cav_att_config['dim'],
+#             #             heads=cav_att_config['heads'],
+#             #             dim_head=cav_att_config['dim_head'],
+#             #             dropout=cav_att_config['dropout']) if cav_att_config['use_hetero'] else \
+#             #         CavAttention(cav_att_config['dim'],
+#             #             heads=cav_att_config['heads'],
+#             #             dim_head=cav_att_config['dim_head'],
+#             #             dropout=cav_att_config['dropout'])      # point_pillar_v2xvit uses HGTCavAttention
+#             self.layers.append(nn.ModuleList([
+#                         # PreNorm(cav_att_config['dim'], att),
+#                         PreNorm(cav_att_config['dim'], PyramidWindowAttention(pwindow_config['dim'],
+#                                                                     heads=pwindow_config['heads'],
+#                                                                     dim_heads=pwindow_config[
+#                                                                         'dim_head'],
+#                                                                     drop_out=pwindow_config[
+#                                                                         'dropout'],
+#                                                                     window_size=pwindow_config[
+#                                                                         'window_size'],
+#                                                                     relative_pos_embedding=
+#                                                                     pwindow_config[
+#                                                                         'relative_pos_embedding'],
+#                                                                     fuse_method=pwindow_config[
+#                                                                         'fusion_method']))]))
+
+#     def forward(self, x, mask, prior_encoding):
+#         print(f'x.shape starting V2XFusionBlock ----------- : {x.shape}')
+#         for pwindow_attn in self.layers:
+#             # x = cav_attn(x, mask=mask, prior_encoding=prior_encoding) + x
+#             # print(f'x.shape after cav_attn: {x.shape}')
+#             # x = pwindow_attn(x) + x
+#             x = pwindow_attn[0](x) + x
+#             print(f'x.shape after pwindow_attn: {x.shape}')
+#             exit()
+#         return x
 
 
 class V2XTEncoder(nn.Module):
@@ -193,7 +197,7 @@ class V2XTEncoder(nn.Module):
                             V2XFusionBlock(num_blocks, cav_att_config, pwindow_att_config), # num_blocks = 1 in point_pillar_v2xvit
                             PreNorm(cav_att_config['dim'], FeedForward(cav_att_config['dim'], mlp_dim, dropout=dropout))
                             ]))
-        self.doWavelet = True
+        self.do_wavelet = args['do_wavelet']
         self.dwt_downsamples = nn.ModuleList([
             DWTForward(J=1, wave='db1', mode='symmetric')
         ])
@@ -224,19 +228,27 @@ class V2XTEncoder(nn.Module):
         x = self.sttf(x, mask, spatial_correction_matrix)    # (B,L,H,W,C) eg ([1, 2, 48, 176, 256])
         # print(f'x.shape after STTF: {x.shape}')
 
+        # print(f'mask.shape before com_mask: {mask.shape}')
+        # print(f'mask: {mask}')
         com_mask = mask.unsqueeze(1).unsqueeze(2).unsqueeze(3) if not self.use_roi_mask else \
                                                 get_roi_and_cav_mask(x.shape, mask, spatial_correction_matrix,
                                                                         self.discrete_ratio,
-                                                                        self.downsample_rate)
+                                                                        self.downsample_rate,
+                                                                        self.do_wavelet)
+        # print(f'com_mask.shape: {com_mask.shape}')
+        # exit()
 
         ### Wavelet Transform (Downsampling) -------------------------------------------------------------------------------------------
+        
         '''
-        Jun28 -------- TODO : Apply Wavelet Transform here right before HGTCAVAttention 
+        Jun28 -------- Apply Wavelet Transform here right before HGTCAVAttention 
         Because HGTCAVAttention uses com_mask to specify which CAV talks to whom. 
         Technically, this is the part where communication is modeled.
         Jul 5 --------- Bypassing HGTCavAttention for now. 
+        Aug 20 -------- Reverting back to using HGTCavAttention after fixing com_mask.
         '''
-        if self.doWavelet:
+        
+        if self.do_wavelet:
             #print(f'x before DWT: {x.shape}')
             # B, L, H, W, C -> B, L, C, H, W
             x = x.permute(0, 1, 4, 2, 3)  # (B,L,C,H,W) eg ([1, 2, 256, 48, 176])
@@ -251,7 +263,7 @@ class V2XTEncoder(nn.Module):
             B_L, C, H, W = x.shape
             x = x.view(B, L, C, H, W).contiguous()
             x = x.permute(0, 1, 3, 4, 2)
-            #print(f'x after DWT: {x.shape}')
+            # print(f'x after DWT: {x.shape}')
 
         # print(f'x before entering attn: {x.shape}')
         # print(f'com_mask: {com_mask.shape}')
@@ -265,7 +277,7 @@ class V2XTEncoder(nn.Module):
         #print(f'x.shape after attn: {x.shape}')
 
         ### Wavelet Reconstruction from attended features -------------------------------------------------------------------------------------------
-        if self.doWavelet:
+        if self.do_wavelet:
             # B, L, H, W, C -> B, L, C, H, W
             x = x.permute(0, 1, 4, 2, 3)
             # B, L, C, H, W -> B*L, C, H, W
@@ -276,7 +288,7 @@ class V2XTEncoder(nn.Module):
             B_L, C, H, W = x.shape
             x = x.view(B, L, C, H, W).contiguous()
             x = x.permute(0, 1, 3, 4, 2)
-            #print(f'x after IDWT: {x.shape}')
+        #     print(f'x after IDWT: {x.shape}')
         # exit() #---------------------------------------------------------------------------------------------------------------
         return x
 
