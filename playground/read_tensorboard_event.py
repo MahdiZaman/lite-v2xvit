@@ -2,6 +2,7 @@
 
 import tensorflow as tf
 import torch
+import os
 
 
 from tensorboard.backend.event_processing.event_accumulator import EventAccumulator
@@ -54,10 +55,13 @@ def list_all_losses(event_file):
     return [(entry.step, entry.value) for entry in validate_loss]
 
 if __name__ == '__main__':
-    event_file = '/home/ma906813/projectmulti_agent_perception/OpenCOOD/nautilus/output/point_pillar_v2xvit_2024_08_12_19_37_52/events.out.tfevents.1723491472.job-train-lite-5f6q4'
+    event_dir = '/home/ma906813/projectmulti_agent_perception/OpenCOOD/nautilus/output/point_pillar_v2xvit_2024_08_20_20_06_19'
+    event_file_name = 'events.out.tfevents.1724184379.job-train-lite-maskreshaped-nkl2v'
+    # event_file = '/home/ma906813/projectmulti_agent_perception/OpenCOOD/nautilus/output/point_pillar_v2xvit_2024_08_12_19_37_52/events.out.tfevents.1723491472.job-train-lite-5f6q4'
+    event_file = os.path.join(event_dir, event_file_name)
     # list_tags(event_file)
-    # best_step, best_loss = find_best_model(event_file)
-    all_losses = list_all_losses(event_file)
+    best_step, best_loss = find_best_model(event_file)
+    # all_losses = list_all_losses(event_file)
 
 
 

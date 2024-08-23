@@ -77,7 +77,7 @@ def main():
 
     print('---------------Creating Model------------------')
     model = train_utils.create_model(hypes)
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')   ## TODO : check if multiple GPUs are being used.
 
     # if we want to train from last checkpoint.
     if opt.model_dir:
@@ -101,6 +101,7 @@ def main():
             torch.nn.parallel.DistributedDataParallel(model,
                                                       device_ids=[opt.gpu],
                                                       find_unused_parameters=True)
+        print(f'model is distributed to gpu # {opt.gpu}')
         model_without_ddp = model.module
 
     # define the loss
