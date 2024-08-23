@@ -77,7 +77,8 @@ def main():
 
     print('---------------Creating Model------------------')
     model = train_utils.create_model(hypes)
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')   ## TODO : check if multiple GPUs are being used.
+    # device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')   ## TODO : check if multiple GPUs are being used.
+    device = torch.device(f'cuda:{opt.gpu}' if torch.cuda.is_available() else 'cpu')
 
     # if we want to train from last checkpoint.
     if opt.model_dir:
