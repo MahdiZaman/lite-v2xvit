@@ -165,7 +165,7 @@ def main():
                                            batch_data['ego']['label_dict'])
 
 
-            criterion.logging(epoch, i, len(train_loader), writer, pbar=pbar2)
+            criterion.logging(device, epoch, i, len(train_loader), writer, pbar=pbar2)
             pbar2.update(1)
 
             if not opt.half:
