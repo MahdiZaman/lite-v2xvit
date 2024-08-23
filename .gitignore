@@ -141,4 +141,5 @@ spconv/
 
 
 # Nautilus stuff
-nautilus/
+nautilus/output
+nautilus/*.yaml
