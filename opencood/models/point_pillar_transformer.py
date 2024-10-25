@@ -35,10 +35,8 @@ class PointPillarTransformer(nn.Module):
 
         self.fusion_net = V2XTransformer(args['transformer'])
 
-        self.cls_head = nn.Conv2d(128 * 2, args['anchor_number'],
-                                  kernel_size=1)
-        self.reg_head = nn.Conv2d(128 * 2, 7 * args['anchor_number'],
-                                  kernel_size=1)
+        self.cls_head = nn.Conv2d(128 * 2, args['anchor_number'], kernel_size=1)
+        self.reg_head = nn.Conv2d(128 * 2, 7 * args['anchor_number'], kernel_size=1)
 
         if args['backbone_fix']:
             self.backbone_fix()
@@ -69,6 +67,11 @@ class PointPillarTransformer(nn.Module):
             p.requires_grad = False
 
     def forward(self, data_dict):
+        # data_dict = process_data_dict['ego'] for each batch (as named in dataloader)
+        
+        # print(f'data_dict keys: {data_dict.keys()}')
+        # print(f'data_dict[processed_lidar] keys: {data_dict["processed_lidar"].keys()}')
+        
         voxel_features = data_dict['processed_lidar']['voxel_features']
         voxel_coords = data_dict['processed_lidar']['voxel_coords']
         voxel_num_points = data_dict['processed_lidar']['voxel_num_points']
@@ -80,19 +83,13 @@ class PointPillarTransformer(nn.Module):
             data_dict['prior_encoding'].unsqueeze(-1).unsqueeze(-1)
 
         batch_dict = {'voxel_features': voxel_features,
-                      'voxel_coords': voxel_coords,
-                      'voxel_num_points': voxel_num_points,
-                      'record_len': record_len}
-        
-        # print(f'batch_dict keys: {batch_dict.keys()}')
-        # print("batch_dict['voxel_features'].shape", batch_dict['voxel_features'].shape)
+                        'voxel_coords': voxel_coords,
+                        'voxel_num_points': voxel_num_points,
+                        'record_len': record_len}
 
         # voxel_feature [B', 32, 4] --> pillar_feature [B', 64]
         # n, 4 -> n, c
-        batch_dict = self.pillar_vfe(batch_dict)
-
-        # print("batch_dict['voxel_features'].shape", batch_dict['voxel_features'].shape)
-        # print("batch_dict['pillar_features'].shape", batch_dict['pillar_features'].shape)
+        batch_dict = self.pillar_vfe(batch_dict)    # pillar_features added into batch_dict
 
         # pillar_feature [B', 64] --> spatial_feature [N, C, H, W]
         # n, c -> N, C, H, W
@@ -109,25 +106,27 @@ class PointPillarTransformer(nn.Module):
 
         spatial_features_2d = batch_dict['spatial_features_2d']
         
-        # downsample feature to reduce memory
+        ## downsample feature to reduce memory
         # print(f'spatial_features_2d.shape before shrink_flag: {spatial_features_2d.shape}')
         if self.shrink_flag:
             spatial_features_2d = self.shrink_conv(spatial_features_2d)
-        # print(f'spatial_features_2d.shape after shrink_flag: {spatial_features_2d.shape}')
+        # print(f'spatial_features_2d.shape after shrink_flag: {spatial_features_2d.shape}')          
             
-        # compressor
+        ## compressor
         # print(f'spatial_features_2d.shape before compression: {spatial_features_2d.shape}')
         if self.compression:
             spatial_features_2d = self.naive_compressor(spatial_features_2d)
-        # print(f'spatial_features_2d.shape before compression: {spatial_features_2d.shape}')
+        # print(f'spatial_features_2d.shape after compression: {spatial_features_2d.shape}')
         # print(f'record_len: {record_len}')
         # print(f'max_cav: {self.max_cav}')
 
-        # Regroup the data based on record_len
-        # N, C, H, W -> B,  L, C, H, W
+
+        ## Regroup the data based on record_len
+        # N, C, H, W    ->   B, L, C, H, W
         regroup_feature, mask = regroup(spatial_features_2d,
                                         record_len,
                                         self.max_cav)
+        # print(f'regroup_feature: {regroup_feature.shape}, mask: {mask.shape}')
         
 
         # prior encoding added
@@ -137,15 +136,12 @@ class PointPillarTransformer(nn.Module):
         regroup_feature = torch.cat([regroup_feature, prior_encoding], dim=2)
 
         # b l c h w -> b l h w c
-        regroup_feature = regroup_feature.permute(0, 1, 3, 4, 2)
-
-        # print(f'regroup_feature.shape: {regroup_feature.shape}')
-        # print(f'mask.shape: {mask.shape}')        
+        regroup_feature = regroup_feature.permute(0, 1, 3, 4, 2)      
         
-        # transformer fusion
-        # fusion_net  = V2XTransformer()
+        # transformer fusion    # fusion_net  --> V2XTransformer()
         fused_feature = self.fusion_net(regroup_feature, mask, spatial_correction_matrix)
-        # exit()
+        # exit()  # ----------------------------------------------------------------------------
+        
         ## Can't reach here due to cuda memory error in attn inside fusion_net 
         # print(f'fused_feature.shape in point_pillar_transformer: {fused_feature.shape}')
         
@@ -160,3 +156,65 @@ class PointPillarTransformer(nn.Module):
                        'rm': rm}
 
         return output_dict
+
+
+
+if __name__ == '__main__':
+    import argparse
+    from torch.utils.data import DataLoader
+    from opencood.data_utils.datasets.__init__ import build_dataset
+    from opencood.tools import train_utils
+    import opencood.hypes_yaml.yaml_utils as yaml_utils
+
+    parser = argparse.ArgumentParser(description="synthetic data generation")
+    parser.add_argument("--hypes_yaml", type=str, required=True,
+                        help='data generation yaml file needed ')
+    parser.add_argument('--model_dir', default='',
+                        help='Continued training path')
+    parser.add_argument("--half", action='store_true',
+                        help="whether train with half precision.")
+    parser.add_argument('--dist_url', default='env://',
+                        help='url used to set up distributed training')
+    opt = parser.parse_args()
+    hypes = yaml_utils.load_yaml(opt.hypes_yaml, opt)
+    # ---------------------------------------------------------------------
+    
+    opencood_train_dataset = build_dataset(hypes, visualize=False, train=True)
+    train_loader = DataLoader(opencood_train_dataset,
+                                  batch_size=hypes['train_params']['batch_size'],
+                                  num_workers=8,
+                                  collate_fn=opencood_train_dataset.collate_batch_train,
+                                  shuffle=True,
+                                  pin_memory=False,
+                                  drop_last=True)
+    print('---finished loading dataset---')
+    
+    hypes = yaml_utils.load_yaml(opt.hypes_yaml, opt)
+    model = train_utils.create_model(hypes)
+    print('---finished creating model---')
+    
+    
+    # ---------- following does not work because 
+    model.eval()  # Set the model to evaluation mode
+
+    # Step 3: Get a single sample from the dataset
+    single_sample = opencood_train_dataset[0]  # Get the first sample, replace with any valid index
+
+    # Step 4: Prepare the sample
+    # Assuming the sample is a dictionary with 'ego' key containing 'processed_lidar' key
+    single_sample = {
+        'ego': single_sample['ego']
+    }
+
+    # Step 5: Pass the sample to the model
+    with torch.no_grad():  # Disable gradient calculation for inference
+        output = model(single_sample['ego'])
+
+    # Step 6: Print the output
+    print("Output:", output)
+    
+    
+    # print(train_loader[0].keys())
+    # model(train_loader[0])
+                            
+    # print(model)

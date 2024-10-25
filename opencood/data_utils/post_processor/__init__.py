@@ -8,7 +8,7 @@ from opencood.data_utils.post_processor.ciassd_postprocessor import CiassdPostpr
 from opencood.data_utils.post_processor.fpvrcnn_postprocessor import FpvrcnnPostprocessor
 
 __all__ = {
-    'VoxelPostprocessor': VoxelPostprocessor,
+    'VoxelPostprocessor': VoxelPostprocessor,   # used by v2x-vit
     'BevPostprocessor': BevPostprocessor,
     'CiassdPostprocessor': CiassdPostprocessor,
     'FpvrcnnPostprocessor': FpvrcnnPostprocessor,

@@ -71,8 +71,7 @@ class BasePostprocessor(object):
 
             # convert center to corner
             object_bbx_corner = \
-                box_utils.boxes_to_corners_3d(object_bbx_center,
-                                              self.params['order'])
+                box_utils.boxes_to_corners_3d(object_bbx_center, self.params['order'])
             projected_object_bbx_corner = \
                 box_utils.project_box3d(object_bbx_corner.float(),
                                         transformation_matrix)
@@ -95,9 +94,7 @@ class BasePostprocessor(object):
 
         return gt_box3d_tensor
 
-    def generate_object_center(self,
-                               cav_contents,
-                               reference_lidar_pose):
+    def generate_object_center(self, cav_contents, reference_lidar_pose):
         """
         Retrieve all objects in a format of (n, 7), where 7 represents
         x, y, z, l, w, h, yaw or x, y, z, h, w, l, yaw.
@@ -122,13 +119,14 @@ class BasePostprocessor(object):
         from opencood.data_utils.datasets import GT_RANGE
 
         tmp_object_dict = {}
-        for cav_content in cav_contents:
+        for cav_content in cav_contents: ## itrerate over all objects in current cav's perception under current timestamp
             tmp_object_dict.update(cav_content['params']['vehicles'])
 
         output_dict = {}
         filter_range = self.params['anchor_args']['cav_lidar_range'] \
             if self.train else GT_RANGE
 
+        # does not return anything but update output_dict
         box_utils.project_world_objects(tmp_object_dict,
                                         output_dict,
                                         reference_lidar_pose,

@@ -1,7 +1,7 @@
 name: point_pillar_v2xvit
-root_dir: '/project/data/v2xset/train'  #'../data/v2xset/train' #
+root_dir: '/project/data/v2xset/train'  #'/home/ma906813/projectmulti_agent_perception/data/v2xset/train' #'../data/v2xset/train' #'/project/data/v2xset/train'  #
 # root_dir: 'v2xset/train_subset'
-validate_dir: '/project/data/v2xset/validate'  #'../data/v2xset/validate' #
+validate_dir: '/project/data/v2xset/validate'  #'/home/ma906813/projectmulti_agent_perception/data/v2xset/validate' #'/project/data/v2xset/validate'  #
 
 wild_setting:
   async: false
@@ -116,7 +116,7 @@ model:
         use_roi_mask: true
         use_RTE: &use_RTE true
         RTE_ratio: &RTE_ratio 2 # 2 means the dt has 100ms interval while 1 means 50 ms interval
-        do_wavelet : true
+        do_wavelet : false
         # agent-wise attention
         cav_att_config: &cav_att_config
           dim: 256

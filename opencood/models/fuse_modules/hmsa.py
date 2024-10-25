@@ -27,10 +27,8 @@ class HGTCavAttention(nn.Module):
             self.v_linears.append(nn.Linear(dim, inner_dim))
             self.a_linears.append(nn.Linear(inner_dim, dim))
 
-        self.relation_att = nn.Parameter(
-            torch.Tensor(num_relations, heads, dim_head, dim_head))
-        self.relation_msg = nn.Parameter(
-            torch.Tensor(num_relations, heads, dim_head, dim_head))
+        self.relation_att = nn.Parameter(torch.Tensor(num_relations, heads, dim_head, dim_head))
+        self.relation_msg = nn.Parameter(torch.Tensor(num_relations, heads, dim_head, dim_head))
 
         torch.nn.init.xavier_uniform(self.relation_att)
         torch.nn.init.xavier_uniform(self.relation_msg)
@@ -108,48 +106,44 @@ class HGTCavAttention(nn.Module):
         return out
 
     def forward(self, x, mask, prior_encoding):
-        # x: (B, L, H, W, C) -> (B, H, W, L, C)
-        # mask: (B, H, W, L, 1)
-        # prior_encoding: (B,L,H,W,3)
+        '''
+            x: (B, L, H, W, C) -> (B, H, W, L, C)
+            mask: (B, H, W, L, 1)
+            prior_encoding: (B,L,H,W,3)
+        '''
         x = x.permute(0, 2, 3, 1, 4)
         # mask: (B, 1, H, W, L, 1)
         mask = mask.unsqueeze(1)
         # (B,L)
-        velocities, dts, types = [itm.squeeze(-1) for itm in
-                                  prior_encoding[:, :, 0, 0, :].split(
-                                      [1, 1, 1], dim=-1)]
+        velocities, _, types = [itm.squeeze(-1) for itm in prior_encoding[:, :, 0, 0, :].split([1, 1, 1], dim=-1)]
         types = types.to(torch.int)
-        dts = dts.to(torch.int)
         qkv = self.to_qkv(x, types)
+        # dts = dts.to(torch.int)
+        
         # (B,M,L,L,C_head,C_head)
         w_att, w_msg = self.get_hetero_edge_weights(x, types)
 
         # q: (B, M, H, W, L, C)
         q, k, v = map(lambda t: rearrange(t, 'b h w l (m c) -> b m h w l c',
-                                          m=self.heads), (qkv))
+                                            m=self.heads), (qkv))
+        
         # attention, (B, M, H, W, L, L)
-        att_map = torch.einsum(
-            'b m h w i p, b m i j p q, bm h w j q -> b m h w i j',
-            [q, w_att, k]) * self.scale
+        att_map = torch.einsum('b m h w i p, b m i j p q, bm h w j q -> b m h w i j',[q, w_att, k]) * self.scale
+        
         # add mask
-        # print('att_map.shape before masked_fill', att_map.shape)
-        # print('mask.shape before', mask.shape)
         att_map = att_map.masked_fill(mask == 0, -float('inf'))
-        # print('att_map.shape after masked_fill', att_map.shape)
-        # exit()
+        
         # softmax
         att_map = self.attend(att_map)
 
         # out:(B, M, H, W, L, C_head)
-        v_msg = torch.einsum('b m i j p c, b m h w j p -> b m h w i j c',
-                             w_msg, v)
-        out = torch.einsum('b m h w i j, b m h w i j c -> b m h w i c',
-                           att_map, v_msg)
+        v_msg = torch.einsum('b m i j p c, b m h w j p -> b m h w i j c', w_msg, v)
+        out = torch.einsum('b m h w i j, b m h w i j c -> b m h w i c', att_map, v_msg)
 
-        out = rearrange(out, 'b m h w l c -> b h w l (m c)',
-                        m=self.heads)
+        out = rearrange(out, 'b m h w l c -> b h w l (m c)', m=self.heads)
         out = self.to_out(out, types)
         out = self.drop_out(out)
+        
         # (B L H W C)
         out = out.permute(0, 3, 1, 2, 4)
         return out

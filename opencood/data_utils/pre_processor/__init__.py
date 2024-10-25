@@ -11,7 +11,7 @@ __all__ = {
     'BasePreprocessor': BasePreprocessor,
     'VoxelPreprocessor': VoxelPreprocessor,
     'BevPreprocessor': BevPreprocessor,
-    'SpVoxelPreprocessor': SpVoxelPreprocessor
+    'SpVoxelPreprocessor': SpVoxelPreprocessor  # used by v2x-vit
 }
 
 

@@ -119,8 +119,7 @@ class BaseDataset(Dataset):
         scenario_folders = sorted([os.path.join(root_dir, x)
                                    for x in os.listdir(root_dir) if
                                    os.path.isdir(os.path.join(root_dir, x))])
-        # Structure: {scenario_id : {cav_1 : {timestamp1 : {yaml: path,
-        # lidar: path, cameras:list of path}}}}
+        # Structure: {scenario_id : {cav_1 : {timestamp1 : {yaml: path, lidar: path, cameras:list of path}}}}
         self.scenario_database = OrderedDict()
         self.len_record = []
 
@@ -155,16 +154,14 @@ class BaseDataset(Dataset):
                     sorted([os.path.join(cav_path, x)
                             for x in os.listdir(cav_path) if
                             x.endswith('.yaml') and 'additional' not in x])
-                timestamps = self.extract_timestamps(yaml_files)
+                timestamps = self.extract_timestamps(yaml_files)    # yaml file names are the timestamps
 
                 for timestamp in timestamps:
                     self.scenario_database[i][cav_id][timestamp] = \
                         OrderedDict()
 
-                    yaml_file = os.path.join(cav_path,
-                                             timestamp + '.yaml')
-                    lidar_file = os.path.join(cav_path,
-                                              timestamp + '.pcd')
+                    yaml_file = os.path.join(cav_path, timestamp + '.yaml')
+                    lidar_file = os.path.join(cav_path, timestamp + '.pcd')
                     camera_files = self.load_camera_files(cav_path, timestamp)
 
                     self.scenario_database[i][cav_id][timestamp]['yaml'] = \
@@ -229,8 +226,7 @@ class BaseDataset(Dataset):
         timestamp_index = idx if scenario_index == 0 else \
             idx - self.len_record[scenario_index - 1]
         # retrieve the corresponding timestamp key
-        timestamp_key = self.return_timestamp_key(scenario_database,
-                                                  timestamp_index)
+        timestamp_key = self.return_timestamp_key(scenario_database, timestamp_index)
         # calculate distance to ego for each cav
         ego_cav_content = \
             self.calc_dist_to_ego(scenario_database, timestamp_key)
@@ -238,12 +234,17 @@ class BaseDataset(Dataset):
         data = OrderedDict()
         # load files for all CAVs
         for cav_id, cav_content in scenario_database.items():
+            # print(f'cav_id: {cav_id}')
+            # # print(f'cav_content: {cav_content.keys()}')
+            # continue
             data[cav_id] = OrderedDict()
             data[cav_id]['ego'] = cav_content['ego']
 
             # calculate delay for this vehicle
             timestamp_delay = \
                 self.time_delay_calculation(cav_content['ego'])
+            # print(f'timestamp_delay: {timestamp_delay}')
+            # continue
 
             if timestamp_index - timestamp_delay <= 0:
                 timestamp_delay = timestamp_index
@@ -260,6 +261,8 @@ class BaseDataset(Dataset):
                                                        cur_ego_pose_flag)
             data[cav_id]['lidar_np'] = \
                 pcd_utils.pcd_to_np(cav_content[timestamp_key_delay]['lidar'])
+            # print(data[cav_id]['lidar_np'].shape)
+        # exit()
         return data
 
     @staticmethod

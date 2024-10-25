@@ -110,23 +110,44 @@ class PillarVFE(nn.Module):
 
         voxel_features, voxel_num_points, coords = \
             batch_dict['voxel_features'], batch_dict['voxel_num_points'], \
-            batch_dict['voxel_coords']
-        points_mean = \
-            voxel_features[:, :, :3].sum(dim=1, keepdim=True) / \
-            voxel_num_points.type_as(voxel_features).view(-1, 1, 1)
-        f_cluster = voxel_features[:, :, :3] - points_mean
+            batch_dict['voxel_coords']  # (B, 32, 4), (B), (B, 4)
 
+        # print(f'voxel_features.shape: {voxel_features.shape}')
+        # print(f'voxel_num_points.shape: {voxel_num_points.shape}')
+        # print(f'coords.shape: {coords.shape}')
+        
+        
+        ### Normalization within each voxel
+        '''
+        points_mean: Computes the mean position (centroid) for the first three features (x, y, z coordinates) of each voxel. This results in a [B, 1, 3] tensor.
+        f_cluster: Captures the deviation of each point’s position from the mean. This gives relative point positions.
+        Goal:   Normalization within the voxel. 
+                Compute the relative position of each point wrt the mean position of all points WITHIN THE VOXEL.
+                Centering around each voxel's local mean.
+                Captures the distribution of points within a voxel.
+        '''
+        points_mean = voxel_features[:, :, :3].sum(dim=1, keepdim=True) / voxel_num_points.type_as(voxel_features).view(-1, 1, 1)
+        f_cluster = voxel_features[:, :, :3] - points_mean  # [B, 32, 3]
+
+
+        ### Normalization wrt global voxel grid.
+        '''
+        Goal:   Centering relative to the voxel grid's spatial center.
+                Centers points based on the voxel’s location in the GLOBAL COORDINATE SYSTEM.
+                Make the network focus on geometry within each voxel, ignoring global translation.
+        '''        
         f_center = torch.zeros_like(voxel_features[:, :, :3])
-        f_center[:, :, 0] = voxel_features[:, :, 0] - (
-                coords[:, 3].to(voxel_features.dtype).unsqueeze(
-                    1) * self.voxel_x + self.x_offset)
-        f_center[:, :, 1] = voxel_features[:, :, 1] - (
-                coords[:, 2].to(voxel_features.dtype).unsqueeze(
-                    1) * self.voxel_y + self.y_offset)
-        f_center[:, :, 2] = voxel_features[:, :, 2] - (
-                coords[:, 1].to(voxel_features.dtype).unsqueeze(
-                    1) * self.voxel_z + self.z_offset)
-
+        f_center[:, :, 0] = voxel_features[:, :, 0] - (coords[:, 3].to(voxel_features.dtype).unsqueeze(1) * self.voxel_x + self.x_offset)
+        f_center[:, :, 1] = voxel_features[:, :, 1] - (coords[:, 2].to(voxel_features.dtype).unsqueeze(1) * self.voxel_y + self.y_offset)
+        f_center[:, :, 2] = voxel_features[:, :, 2] - (coords[:, 1].to(voxel_features.dtype).unsqueeze(1) * self.voxel_z + self.z_offset)
+        
+        '''
+            f_cluster captures local point spread (how points are arranged relative to their centroid inside a voxel), 
+            f_center focuses on local geometry relative to the voxel’s center in the grid. 
+            Both normalizations help the model focus on local features rather than being affected by absolute coordinates.
+        '''
+        # print(f'f_cluster.shape: {f_cluster.shape}')
+        # print(f'f_center.shape: {f_center.shape}')
         if self.use_absolute_xyz:
             features = [voxel_features, f_cluster, f_center]
         else:
@@ -136,15 +157,21 @@ class PillarVFE(nn.Module):
             points_dist = torch.norm(voxel_features[:, :, :3], 2, 2,
                                      keepdim=True)
             features.append(points_dist)
-        features = torch.cat(features, dim=-1)
+        features = torch.cat(features, dim=-1)  # [B, 32, 10]
 
+
+        '''
+            get_paddings_indicator() creates a mask to identify valid points versus padding in each voxel. 
+            This ensures the network only processes real data and ignores padded values. 
+            The mask aligns with the number of points per voxel and ensures consistent shapes across the batch.
+        '''
         voxel_count = features.shape[1]
-        mask = self.get_paddings_indicator(voxel_num_points, voxel_count,
-                                           axis=0)
+        mask = self.get_paddings_indicator(voxel_num_points, voxel_count, axis=0)
         mask = torch.unsqueeze(mask, -1).type_as(voxel_features)
-        features *= mask
-        for pfn in self.pfn_layers:
+        features *= mask    # [B, 32, 10]   # 10 = (x,y,z,intensity) , f_cluster, f_center = 4 + 3 + 3
+        
+        for pfn in self.pfn_layers: # iterates once
             features = pfn(features)
         features = features.squeeze()
-        batch_dict['pillar_features'] = features
-        return batch_dict
+        batch_dict['pillar_features'] = features    # [B, 64]
+        return batch_dict   # [B, 64]

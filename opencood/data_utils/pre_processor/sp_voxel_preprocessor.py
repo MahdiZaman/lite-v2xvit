@@ -35,8 +35,7 @@ class SpVoxelPreprocessor(BasePreprocessor):
         else:
             self.max_voxels = self.params['args']['max_voxel_test']
 
-        grid_size = (np.array(self.lidar_range[3:6]) -
-                     np.array(self.lidar_range[0:3])) / np.array(self.voxel_size)
+        grid_size = (np.array(self.lidar_range[3:6]) - np.array(self.lidar_range[0:3])) / np.array(self.voxel_size)
         self.grid_size = np.round(grid_size).astype(np.int64)
 
         # use sparse conv library to generate voxel
@@ -61,7 +60,9 @@ class SpVoxelPreprocessor(BasePreprocessor):
         if self.spconv == 1:
             voxel_output = self.voxel_generator.generate(pcd_np)
         else:
+            # print(f'pcd_np shape:, {pcd_np.shape}, {pcd_np.dtype}')
             pcd_tv = tv.from_numpy(pcd_np)
+            # print(f'pcd_tv shape:, {pcd_tv.shape}, {pcd_tv.dtype}')
             voxel_output = self.voxel_generator.point_to_voxel(pcd_tv)
         if isinstance(voxel_output, dict):
             voxels, coordinates, num_points = \
@@ -70,11 +71,13 @@ class SpVoxelPreprocessor(BasePreprocessor):
         else:
             voxels, coordinates, num_points = voxel_output
 
-        if self.spconv == 2:
+        if self.spconv == 2:    # spconv v2.x for v2x-vit
             voxels = voxels.numpy()
             coordinates = coordinates.numpy()
             num_points = num_points.numpy()
-
+            # print('voxels shape:', voxels.shape)
+            # print('coordinates shape:', coordinates.shape)
+            # print('num_points shape:', num_points.shape)
         data_dict['voxel_features'] = voxels
         data_dict['voxel_coords'] = coordinates
         data_dict['voxel_num_points'] = num_points

@@ -25,8 +25,7 @@ class STTF(nn.Module):
 
         T = get_transformation_matrix(
             dist_correction_matrix[:, 1:, :, :].reshape(-1, 2, 3), (H, W))
-        cav_features = warp_affine(x[:, 1:, :, :, :].reshape(-1, C, H, W), T,
-                                   (H, W))
+        cav_features = warp_affine(x[:, 1:, :, :, :].reshape(-1, C, H, W), T, (H, W))
         cav_features = cav_features.reshape(B, -1, C, H, W)
         x = torch.cat([x[:, 0, :, :, :].unsqueeze(1), cav_features], dim=1)
         x = x.permute(0, 1, 3, 4, 2)
@@ -115,12 +114,12 @@ class V2XFusionBlock(nn.Module):    # with HGTCAVAttention
     def forward(self, x, mask, prior_encoding):
         for cav_attn, pwindow_attn in self.layers:
             # print(f'x.shape before cav_attn: {x.shape}, mask.shape: {mask.shape}, prior_encoding.shape: {prior_encoding.shape}')
-            x = cav_attn(x, mask=mask, prior_encoding=prior_encoding) + x
+            x = cav_attn(x, mask=mask, prior_encoding=prior_encoding) + x   # B,L,H,W,C
             # print(f'x.shape after cav_attn: {x.shape}')
-            x = pwindow_attn(x) + x
+            x = pwindow_attn(x) + x   # B,L,H,W,C
             # print(f'x.shape after pwindow_attn: {x.shape}')
             # exit()
-        return x
+        return x   # B,L,H,W,C
 
 
 # class V2XFusionBlock(nn.Module):    # without HGTCAVAttention
@@ -204,17 +203,20 @@ class V2XTEncoder(nn.Module):
         self.dwt_upsample = DWTInverse(wave='db1', mode='symmetric')
 
     def forward(self, x, mask, spatial_correction_matrix):
-        #print("------V2XTEncoder forward------")
+        # print("------V2XTEncoder forward------")
+        '''
+        x : B,L,H,W,C+3 (feature + prior_encoding)
+            Last 3 channels of x are prior_encoding: probably velocity, time_delay, infra.
+            First 256 channels are the features (x).
+        mask: B,L
+        spatial_correction_matrix: B,L,4,4
+        '''
 
-        # transform the features to the current timestamp
-        # velocity, time_delay, infra
-        prior_encoding = x[..., -3:]        # (B,L,H,W,3) eg ([1, 2, 48, 176, 3])
-        x = x[..., :-3]     # (B,L,H,W,C) eg ([1, 2, 48, 176, 256])
+        # transform the features to the current timestamp        
+        prior_encoding = x[..., -3:]        # B,L,H,W,3   eg ([1, 2, 48, 176, 3])   # velocity, time_delay, infra
+        x = x[..., :-3]     # B,L,H,W,C   eg ([1, 2, 48, 176, 256])
         B, L, H, W, C = x.shape
-        '''
-        Last 3 channels of x are prior_encoding: probably velocity, time_delay, infra.
-        First 256 channels are the features (x).
-        '''
+
 
         ## Relative Temporal Embedding
         if self.use_RTE: 
@@ -225,7 +227,7 @@ class V2XTEncoder(nn.Module):
         # print(f'x.shape after RTE: {x.shape}')
         
         ## STTF encoding (Spatio-Temporal Transformation Fusion)
-        x = self.sttf(x, mask, spatial_correction_matrix)    # (B,L,H,W,C) eg ([1, 2, 48, 176, 256])
+        x = self.sttf(x, mask, spatial_correction_matrix)    # B,L,H,W,C    eg [1, 2, 48, 176, 256]
         # print(f'x.shape after STTF: {x.shape}')
 
         # print(f'mask.shape before com_mask: {mask.shape}')
@@ -274,7 +276,7 @@ class V2XTEncoder(nn.Module):
         for attn, ff in self.layers:
             x = attn(x, mask=com_mask, prior_encoding=prior_encoding)
             x = ff(x) + x
-        #print(f'x.shape after attn: {x.shape}')
+        # print(f'x.shape after attn: {x.shape}')
 
         ### Wavelet Reconstruction from attended features -------------------------------------------------------------------------------------------
         if self.do_wavelet:

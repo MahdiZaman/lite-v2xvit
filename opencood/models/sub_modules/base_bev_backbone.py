@@ -10,9 +10,7 @@ class BaseBEVBackbone(nn.Module):
 
         if 'layer_nums' in self.model_cfg:
 
-            assert len(self.model_cfg['layer_nums']) == \
-                   len(self.model_cfg['layer_strides']) == \
-                   len(self.model_cfg['num_filters'])
+            assert len(self.model_cfg['layer_nums']) == len(self.model_cfg['layer_strides']) == len(self.model_cfg['num_filters'])
 
             layer_nums = self.model_cfg['layer_nums']
             layer_strides = self.model_cfg['layer_strides']
@@ -21,8 +19,7 @@ class BaseBEVBackbone(nn.Module):
             layer_nums = layer_strides = num_filters = []
 
         if 'upsample_strides' in self.model_cfg:
-            assert len(self.model_cfg['upsample_strides']) \
-                   == len(self.model_cfg['num_upsample_filter'])
+            assert len(self.model_cfg['upsample_strides']) == len(self.model_cfg['num_upsample_filter'])
 
             num_upsample_filters = self.model_cfg['num_upsample_filter']
             upsample_strides = self.model_cfg['upsample_strides']
@@ -49,7 +46,7 @@ class BaseBEVBackbone(nn.Module):
             for k in range(layer_nums[idx]):
                 cur_layers.extend([
                     nn.Conv2d(num_filters[idx], num_filters[idx],
-                              kernel_size=3, padding=1, bias=False),
+                                kernel_size=3, padding=1, bias=False),
                     nn.BatchNorm2d(num_filters[idx], eps=1e-3, momentum=0.01),
                     nn.ReLU()
                 ])
@@ -65,7 +62,7 @@ class BaseBEVBackbone(nn.Module):
                             stride=upsample_strides[idx], bias=False
                         ),
                         nn.BatchNorm2d(num_upsample_filters[idx],
-                                       eps=1e-3, momentum=0.01),
+                                        eps=1e-3, momentum=0.01),
                         nn.ReLU()
                     ))
                 else:
@@ -77,7 +74,7 @@ class BaseBEVBackbone(nn.Module):
                             stride=stride, bias=False
                         ),
                         nn.BatchNorm2d(num_upsample_filters[idx], eps=1e-3,
-                                       momentum=0.01),
+                                        momentum=0.01),
                         nn.ReLU()
                     ))
 
@@ -85,7 +82,7 @@ class BaseBEVBackbone(nn.Module):
         if len(upsample_strides) > num_levels:
             self.deblocks.append(nn.Sequential(
                 nn.ConvTranspose2d(c_in, c_in, upsample_strides[-1],
-                                   stride=upsample_strides[-1], bias=False),
+                                    stride=upsample_strides[-1], bias=False),
                 nn.BatchNorm2d(c_in, eps=1e-3, momentum=0.01),
                 nn.ReLU(),
             ))
@@ -99,6 +96,7 @@ class BaseBEVBackbone(nn.Module):
         Transform to spatial_features_2d [N, C, H, W]
         '''
         spatial_features = data_dict['spatial_features']
+        # print(f'spatial_features.shape: {spatial_features.shape}')
 
         ups = []
         ret_dict = {}
@@ -124,4 +122,6 @@ class BaseBEVBackbone(nn.Module):
             x = self.deblocks[-1](x)
 
         data_dict['spatial_features_2d'] = x
+        # print(f'data_dict[spatial_features_2d].shape: {data_dict["spatial_features_2d"].shape}')
+        
         return data_dict

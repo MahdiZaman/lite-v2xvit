@@ -784,7 +784,7 @@ def remove_bbx_abnormal_z(bbx_3d):
 
     return index
 
-
+# this function is in effect, because the 2nd appearance of the function name overrrides the first one.
 def project_points_by_matrix_torch(points, transformation_matrix):
     """
     Project the points to another coordinate system based on the

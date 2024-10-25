@@ -43,14 +43,10 @@ def get_roi_and_cav_mask(shape, cav_mask, spatial_correction_matrix,
         dist_correction_matrix.reshape(-1, 2, 3), (H, W))
     # (B,L,1,H,W)
     roi_mask = get_rotated_roi((B, L, C, H, W), T, do_wavelet)
-    # print(f'roi_mask.shape: {roi_mask.shape}')
-    # print(f'cav_mask.shape: {cav_mask.shape}')
+
     # (B,L,1,H,W)
     com_mask = combine_roi_and_cav_mask(roi_mask, cav_mask)
-    # print(f'com_mask.shape: {com_mask.shape}')
-    # print('--- get_roi_and_cav_mask DONE --- ')
-    
-    # exit()
+
     # (B,H,W,1,L)
     com_mask = com_mask.permute(0,3,4,2,1)
     return com_mask
