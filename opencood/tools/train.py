@@ -36,7 +36,9 @@ def main():
     opt = train_parser()
     hypes = yaml_utils.load_yaml(opt.hypes_yaml, opt)
 
-    multi_gpu_utils.init_distributed_mode(opt)
+    multi_gpu_utils.init_distributed_mode(opt)        
+    # Inside multi-gpu, built-in print function is overwritten to only print from master process (ie rank 0; 0th GPU)
+    # Hence after this point, only rank 0 will print to console.
 
     print('-----------------Dataset Building------------------')
     opencood_train_dataset = build_dataset(hypes, visualize=False, train=True)
@@ -98,11 +100,10 @@ def main():
     model_without_ddp = model
 
     if opt.distributed:
-        model = \
-            torch.nn.parallel.DistributedDataParallel(model,
+        model = torch.nn.parallel.DistributedDataParallel(model,
                                                       device_ids=[opt.gpu],
                                                       find_unused_parameters=True)
-        print(f'model is distributed to gpu # {opt.gpu}')
+        # print(f'model is distributed to gpu # {opt.gpu}')
         model_without_ddp = model.module
 
     # define the loss
@@ -135,6 +136,9 @@ def main():
 
         if opt.distributed:
             sampler_train.set_epoch(epoch)
+            # In distributed mode, calling the set_epoch() method at the beginning of each epoch before 
+            # creating the DataLoader iterator is necessary to make shuffling work properly across multiple epochs. 
+            # Otherwise, the same ordering will be always used.
 
         pbar2 = tqdm.tqdm(total=len(train_loader), leave=True)
 
@@ -147,7 +151,7 @@ def main():
             batch_data = train_utils.to_device(batch_data, device)
 
             # case1 : late fusion train --> only ego needed,
-            # and ego is random selected
+            # and ego is random selected 
             # case2 : early fusion train --> all data projected to ego
             # case3 : intermediate fusion --> ['ego']['processed_lidar']
             # becomes a list, which containing all data from other cavs
@@ -156,17 +160,17 @@ def main():
                 ouput_dict = model(batch_data['ego'])
                 # first argument is always your output dictionary,
                 # second argument is always your label dictionary.
-                final_loss = criterion(ouput_dict,
-                                       batch_data['ego']['label_dict'])
+                final_loss = criterion(ouput_dict, batch_data['ego']['label_dict'])
             else:
                 with torch.cuda.amp.autocast():
                     ouput_dict = model(batch_data['ego'])
-                    final_loss = criterion(ouput_dict,
-                                           batch_data['ego']['label_dict'])
+                    final_loss = criterion(ouput_dict, batch_data['ego']['label_dict'])
 
 
-            criterion.logging(device, epoch, i, len(train_loader), writer, pbar=pbar2)
+            criterion.logging(epoch, i, len(train_loader), writer, pbar=pbar2)
             pbar2.update(1)
+            # criterion.logging(epoch, i, len(train_loader), writer, pbar=None)
+            
 
             if not opt.half:
                 final_loss.backward()
@@ -193,12 +197,10 @@ def main():
                     batch_data = train_utils.to_device(batch_data, device)
                     ouput_dict = model(batch_data['ego'])
 
-                    final_loss = criterion(ouput_dict,
-                                           batch_data['ego']['label_dict'])
+                    final_loss = criterion(ouput_dict, batch_data['ego']['label_dict'])
                     valid_ave_loss.append(final_loss.item())
             valid_ave_loss = statistics.mean(valid_ave_loss)
-            print('At epoch %d, the validation loss is %f' % (epoch,
-                                                              valid_ave_loss))
+            print('At epoch %d, the validation loss is %f' % (epoch, valid_ave_loss))
             writer.add_scalar('Validate_Loss', valid_ave_loss, epoch)
 
     print('Training Finished, checkpoints saved to %s' % saved_path)
