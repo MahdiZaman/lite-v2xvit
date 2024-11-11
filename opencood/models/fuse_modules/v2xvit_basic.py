@@ -228,10 +228,9 @@ class V2XTEncoder(nn.Module):
         
         ## STTF encoding (Spatio-Temporal Transformation Fusion)
         x = self.sttf(x, mask, spatial_correction_matrix)    # B,L,H,W,C    eg [1, 2, 48, 176, 256]
-        # print(f'x.shape after STTF: {x.shape}')
+        
+        # In paper, RTE+STTF is jointly referred to as Delay-aware Positional Encoding. 
 
-        # print(f'mask.shape before com_mask: {mask.shape}')
-        # print(f'mask: {mask}')
         com_mask = mask.unsqueeze(1).unsqueeze(2).unsqueeze(3) if not self.use_roi_mask else \
                                                 get_roi_and_cav_mask(x.shape, mask, spatial_correction_matrix,
                                                                         self.discrete_ratio,

@@ -79,8 +79,7 @@ class HGTCavAttention(nn.Module):
                 w_msg_i_list = []
 
                 for j in range(x.shape[-2]):
-                    e_type = self.get_relation_type_index(types[b, i],
-                                                          types[b, j])
+                    e_type = self.get_relation_type_index(types[b, i], types[b, j])
                     w_att_i_list.append(self.relation_att[e_type].unsqueeze(0))
                     w_msg_i_list.append(self.relation_msg[e_type].unsqueeze(0))
                 w_att_list.append(torch.cat(w_att_i_list, dim=0).unsqueeze(0))
