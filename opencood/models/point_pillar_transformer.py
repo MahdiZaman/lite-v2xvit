@@ -88,12 +88,13 @@ class PointPillarTransformer(nn.Module):
                         'record_len': record_len}
 
         # voxel_feature [B', 32, 4] --> pillar_feature [B', 64]
-        # n, 4 -> n, c
+        # n, 32, 4 -> n, 64
         batch_dict = self.pillar_vfe(batch_dict)    # pillar_features added into batch_dict
 
         # pillar_feature [B', 64] --> spatial_feature [N, C, H, W]
         # n, c -> N, C, H, W
         batch_dict = self.scatter(batch_dict)
+        # exit()
 
         # print("batch_dict['spatial_features'].shape", batch_dict['spatial_features'].shape)
         # print(f'batch_dict keys: {batch_dict.keys()}')
@@ -113,10 +114,10 @@ class PointPillarTransformer(nn.Module):
         # print(f'spatial_features_2d.shape after shrink_flag: {spatial_features_2d.shape}')          
             
         ## compressor
-        # print(f'spatial_features_2d.shape before compression: {spatial_features_2d.shape}')
+        print(f'spatial_features_2d.shape before compression: {spatial_features_2d.shape}')
         if self.compression:
             spatial_features_2d = self.naive_compressor(spatial_features_2d)
-        # print(f'spatial_features_2d.shape after compression: {spatial_features_2d.shape}')
+        print(f'spatial_features_2d.shape after compression: {spatial_features_2d.shape}')
         # print(f'record_len: {record_len}')
         # print(f'max_cav: {self.max_cav}')
 
@@ -126,7 +127,8 @@ class PointPillarTransformer(nn.Module):
         regroup_feature, mask = regroup(spatial_features_2d,
                                         record_len,
                                         self.max_cav)
-        # print(f'regroup_feature: {regroup_feature.shape}, mask: {mask.shape}')
+        print(f'regroup_feature after: {regroup_feature.shape}, mask: {mask.shape}')
+        # exit()
         
 
         # prior encoding added

@@ -42,6 +42,7 @@ def main():
 
     print('-----------------Dataset Building------------------')
     opencood_train_dataset = build_dataset(hypes, visualize=False, train=True)
+    # exit()  # -------------------------------------------------------------------------
     opencood_validate_dataset = build_dataset(hypes, visualize=False, train=False)
 
     if opt.distributed:
@@ -76,17 +77,15 @@ def main():
                                 shuffle=False,
                                 pin_memory=False,
                                 drop_last=True)
-
     print('---------------Creating Model------------------')
     model = train_utils.create_model(hypes)
-    # device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')   ## TODO : check if multiple GPUs are being used.
-    device = torch.device(f'cuda:{opt.gpu}' if torch.cuda.is_available() else 'cpu')
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')   ## TODO : check if multiple GPUs are being used.
+    # device = torch.device(f'cuda:{opt.gpu}' if torch.cuda.is_available() else 'cpu')
 
     # if we want to train from last checkpoint.
     if opt.model_dir:
         saved_path = opt.model_dir
-        init_epoch, model = train_utils.load_saved_model(saved_path,
-                                                         model)
+        init_epoch, model = train_utils.load_saved_model(saved_path, model)
 
     else:
         init_epoch = 0
@@ -165,7 +164,6 @@ def main():
                 with torch.cuda.amp.autocast():
                     ouput_dict = model(batch_data['ego'])
                     final_loss = criterion(ouput_dict, batch_data['ego']['label_dict'])
-
 
             criterion.logging(epoch, i, len(train_loader), writer, pbar=pbar2)
             pbar2.update(1)

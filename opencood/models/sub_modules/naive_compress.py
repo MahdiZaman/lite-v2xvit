@@ -30,3 +30,13 @@ class NaiveCompressor(nn.Module):
         x = self.decoder(x)
 
         return x
+    
+
+if __name__ == '__main__':
+    input_dim = 256
+    compress_raito = 2
+    x = torch.randn(1, input_dim, 64, 64)
+    print(x.size())
+    naive_compressor = NaiveCompressor(input_dim, compress_raito)
+    out = naive_compressor(x)
+    print(out.size())

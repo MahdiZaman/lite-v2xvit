@@ -121,6 +121,8 @@ def create_model(hypes):
     backbone_config = hypes['model']['args']
 
     model_filename = "opencood.models." + backbone_name
+    print(model_filename)
+    # exit()
     model_lib = importlib.import_module(model_filename)
     model = None
     target_model_name = backbone_name.replace('_', '')

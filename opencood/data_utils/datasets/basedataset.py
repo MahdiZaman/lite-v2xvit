@@ -129,8 +129,7 @@ class BaseDataset(Dataset):
 
             # at least 1 cav should show up
             cav_list = sorted([x for x in os.listdir(scenario_folder)
-                               if os.path.isdir(
-                    os.path.join(scenario_folder, x))])
+                               if os.path.isdir(os.path.join(scenario_folder, x))])
             assert len(cav_list) > 0
 
             # roadside unit data's id is always negative, so here we want to
@@ -150,37 +149,32 @@ class BaseDataset(Dataset):
                 cav_path = os.path.join(scenario_folder, cav_id)
 
                 # use the frame number as key, the full path as the values
-                yaml_files = \
-                    sorted([os.path.join(cav_path, x)
-                            for x in os.listdir(cav_path) if
-                            x.endswith('.yaml') and 'additional' not in x])
+                yaml_files = sorted([os.path.join(cav_path, x) for x in os.listdir(cav_path) if x.endswith('.yaml') and 'additional' not in x])
                 timestamps = self.extract_timestamps(yaml_files)    # yaml file names are the timestamps
 
                 for timestamp in timestamps:
-                    self.scenario_database[i][cav_id][timestamp] = \
-                        OrderedDict()
+                    self.scenario_database[i][cav_id][timestamp] = OrderedDict()
 
                     yaml_file = os.path.join(cav_path, timestamp + '.yaml')
                     lidar_file = os.path.join(cav_path, timestamp + '.pcd')
                     camera_files = self.load_camera_files(cav_path, timestamp)
 
-                    self.scenario_database[i][cav_id][timestamp]['yaml'] = \
-                        yaml_file
-                    self.scenario_database[i][cav_id][timestamp]['lidar'] = \
-                        lidar_file
-                    self.scenario_database[i][cav_id][timestamp]['camera0'] = \
-                        camera_files
+                    self.scenario_database[i][cav_id][timestamp]['yaml'] = yaml_file
+                    self.scenario_database[i][cav_id][timestamp]['lidar'] = lidar_file
+                    self.scenario_database[i][cav_id][timestamp]['camera0'] = camera_files
                 # Assume all cavs will have the same timestamps length. Thus
                 # we only need to calculate for the first vehicle in the
                 # scene.
                 if j == 0:
                     # we regard the agent with the minimum id as the ego
+                    # minimum but not -1, as -1 is reserved for RSU
                     self.scenario_database[i][cav_id]['ego'] = True
                     if not self.len_record:
                         self.len_record.append(len(timestamps))
                     else:
                         prev_last = self.len_record[-1]
                         self.len_record.append(prev_last + len(timestamps))
+                    print(f'len_record: {self.len_record}')
                 else:
                     self.scenario_database[i][cav_id]['ego'] = False
 
@@ -217,19 +211,29 @@ class BaseDataset(Dataset):
         # we loop the accumulated length list to see get the scenario index
         scenario_index = 0
         for i, ele in enumerate(self.len_record):
+            print(f'i, ele, scenario_index: {i}, {ele}, {scenario_index}')
+            print(f'idx: {idx}')
             if idx < ele:
                 scenario_index = i
                 break
         scenario_database = self.scenario_database[scenario_index]
+        print(f'scenario_database: {scenario_database.keys()}')
 
         # check the timestamp index
         timestamp_index = idx if scenario_index == 0 else \
             idx - self.len_record[scenario_index - 1]
-        # retrieve the corresponding timestamp key
+        # print(f'timestamp_index: {timestamp_index}')
+        
+        # retrieve the corresponding timestamp key # map the index to the actual global timestamp key 
+        # # global means in the combined scenarios
         timestamp_key = self.return_timestamp_key(scenario_database, timestamp_index)
-        # calculate distance to ego for each cav
+        print(f'timestamp_key: {timestamp_key}')
+        
+        # calculate distance to ego for each cav 
+        # at a certain timestamp
         ego_cav_content = \
             self.calc_dist_to_ego(scenario_database, timestamp_key)
+        # print(f'ego_cav_content: {ego_cav_content}')
 
         data = OrderedDict()
         # load files for all CAVs

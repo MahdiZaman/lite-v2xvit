@@ -36,7 +36,7 @@ class IntermediateFusionDataset(basedataset.BaseDataset):
         # if project first, cav's lidar will first be projected to
         # the ego's coordinate frame. otherwise, the feature will be
         # projected instead.
-        print('loading intermediate fusion dataset')
+
         self.proj_first = True
         if 'proj_first' in params['fusion']['args'] and \
             not params['fusion']['args']['proj_first']:
@@ -49,19 +49,29 @@ class IntermediateFusionDataset(basedataset.BaseDataset):
         # cur_ego_pose_flag=False means there is time delay between remote's capturing of data and ego's reception of their data. So STCM has to be used. 
         # pontpillar_v2xvit uses False. 
 
-        self.pre_processor = build_preprocessor(params['preprocess'],
-                                                train)
-        self.post_processor = post_processor.build_postprocessor(
-            params['postprocess'],
-            train)
-
+        self.pre_processor = build_preprocessor(params['preprocess'], train)
+        self.post_processor = post_processor.build_postprocessor(params['postprocess'], train)
+        
+        print(f' -------------------- IntermediateFusionDataset: {params} ----------------------------')
+        print(f'proj_first: {self.proj_first}')
+        print(f'cur_ego_pose_flag: {self.cur_ego_pose_flag}')
+        print(f'pre_processor: {self.pre_processor}')
+        print(f'post_processor: {self.post_processor}')
+        print(f' ------------------------------------------------')
+        
     def __getitem__(self, idx):
-        base_data_dict = self.retrieve_base_data(idx, cur_ego_pose_flag=self.cur_ego_pose_flag)        
+        base_data_dict = self.retrieve_base_data(idx, cur_ego_pose_flag=self.cur_ego_pose_flag)   
+        # retrieve_base_data)() returns combined data (across all scenes) at a given timestamp=idx
+        
+        # --> The returned data includes ego's time_delay, params, lidar_np, and n neighbor's lidar_np, params, time_delay
+        # --> n <= max_cav
+        
         ''' base_data_dict keys are the subfolder names in date folders
                 eg 2021_09_09_19_27_35 -> (['15009', '15018', '15027', '-1']) -> timestamped features in short sequence
-                Scene_ID -> cav_ID -> timestamp.yaml + lidar data + camera data '''
-        # print(f'base_data_dict.keys: {base_data_dict.keys()}')
-
+                Scene_ID -> cav_ID -> timestamp + lidar data + camera data '''
+        #print(f'base_data_dict.keys: {base_data_dict.keys()}')
+        # #print(f'base_data_dict.values: {base_data_dict.values().keys()}')
+        
         processed_data_dict = OrderedDict()
         processed_data_dict['ego'] = {}
 
@@ -70,6 +80,8 @@ class IntermediateFusionDataset(basedataset.BaseDataset):
 
         # first find the ego vehicle's lidar pose
         for cav_id, cav_content in base_data_dict.items():
+            #print(f'cav_id: {cav_id}')
+            #print(f'cav_content.keys: {cav_content.keys()}')
             if cav_content['ego']:
                 ego_id = cav_id
                 ego_lidar_pose = cav_content['params']['lidar_pose']    # loaded in base_data_dict from scene_id -> cav_id -> timestamp.yaml
@@ -80,7 +92,7 @@ class IntermediateFusionDataset(basedataset.BaseDataset):
         assert len(ego_lidar_pose) > 0
         
         pairwise_t_matrix = self.get_pairwise_transformation(base_data_dict, self.max_cav)
-        # print(f'unique in pairwise_t_matrix: {np.unique(pairwise_t_matrix)}') 
+        # #print(f'unique in pairwise_t_matrix: {np.unique(pairwise_t_matrix)}') 
         ### pairwise_t_matrix is just 0s and 1s if proj_first is True
 
         processed_features = []
@@ -99,28 +111,16 @@ class IntermediateFusionDataset(basedataset.BaseDataset):
         # loop over all cav_id to process information : 'relative to ego'
         for cav_id, selected_cav_base in base_data_dict.items():
             # check if the cav is within the communication range with ego
-            distance = \
-                math.sqrt((selected_cav_base['params']['lidar_pose'][0] -
-                           ego_lidar_pose[0]) ** 2 + (
-                                  selected_cav_base['params'][
-                                      'lidar_pose'][1] - ego_lidar_pose[
-                                      1]) ** 2)
+            distance = math.sqrt((selected_cav_base['params']['lidar_pose'][0] - ego_lidar_pose[0]) ** 2 + ( selected_cav_base['params']['lidar_pose'][1] - ego_lidar_pose[1]) ** 2)
+            
             if distance > opencood.data_utils.datasets.COM_RANGE:
                 continue
-            
-            # print(f'cav_id: {cav_id}')
-            # print(f'selected_cav_base.keys: {selected_cav_base.keys()}')
-            # print(f'selected_cav_base[params].keys: {selected_cav_base["params"].keys()}')            
-            # exit()
         
-            selected_cav_processed = self.get_item_single_car(
-                selected_cav_base,
-                ego_lidar_pose)
+            selected_cav_processed = self.get_item_single_car(selected_cav_base, ego_lidar_pose)
 
             object_stack.append(selected_cav_processed['object_bbx_center'])
             object_id_stack += selected_cav_processed['object_ids']
-            processed_features.append(
-                selected_cav_processed['processed_features'])
+            processed_features.append(selected_cav_processed['processed_features'])
 
             velocity.append(selected_cav_processed['velocity'])
             time_delay.append(float(selected_cav_base['time_delay']))
@@ -225,9 +225,7 @@ class IntermediateFusionDataset(basedataset.BaseDataset):
                     
         # retrieve objects (perceived by remote_cav) under ego coordinates : transform object bboxes from remote_cav coord to ego coord
         # objects are in the form of (N, 7) : [x, y, z, l, w, h, yaw] or [x, y, z, h, w, l, yaw]
-        object_bbx_center, object_bbx_mask, object_ids = \
-            self.post_processor.generate_object_center([selected_cav_base],
-                                                       ego_pose)
+        object_bbx_center, object_bbx_mask, object_ids = self.post_processor.generate_object_center([selected_cav_base], ego_pose)
         # post_processor means processing on object labels; not 'post'processing on lidar data
 
         #### filter lidar
@@ -243,8 +241,10 @@ class IntermediateFusionDataset(basedataset.BaseDataset):
                                         self.params['preprocess'][
                                             'cav_lidar_range'])
         
-        # print(f'lidar_np: {lidar_np.shape}')
-        processed_lidar = self.pre_processor.preprocess(lidar_np)   # converts point cloud data to voxel features'
+        print(f'lidar_np: {lidar_np.shape}')
+        processed_lidar = self.pre_processor.preprocess(lidar_np)   # converts point cloud data to voxel features
+        print(f'processed_lidar: {processed_lidar.keys()}')
+        # exit()
 
         # velocity
         velocity = selected_cav_base['params']['ego_speed']
@@ -253,10 +253,10 @@ class IntermediateFusionDataset(basedataset.BaseDataset):
 
         selected_cav_processed.update(
             {'object_bbx_center': object_bbx_center[object_bbx_mask == 1],
-             'object_ids': object_ids,
-             'projected_lidar': lidar_np,
-             'processed_features': processed_lidar,
-             'velocity': velocity})
+                'object_ids': object_ids,
+                'projected_lidar': lidar_np,
+                'processed_features': processed_lidar,
+                'velocity': velocity})
 
         return selected_cav_processed
 
@@ -446,14 +446,14 @@ class IntermediateFusionDataset(basedataset.BaseDataset):
             shape: (L, L, 4, 4)
         """
         
-        #print('base_data_dict.keys: ', base_data_dict.keys())
-        #print('max_cav: ', max_cav)
+        ##print('base_data_dict.keys: ', base_data_dict.keys())
+        ##print('max_cav: ', max_cav)
 
         pairwise_t_matrix = np.zeros((max_cav, max_cav, 4, 4))
-        #print('pairwise_t_matrix.shape: ', pairwise_t_matrix.shape)
+        ##print('pairwise_t_matrix.shape: ', pairwise_t_matrix.shape)
 
         if self.proj_first:
-            # print('if')
+            # #print('if')
             # if lidar projected to ego first, then the pairwise matrix
             # becomes identity
             pairwise_t_matrix[:, :] = np.identity(4)
@@ -504,15 +504,15 @@ if __name__ == '__main__':
     print('-----------------finished loading dataset------------------')
     
     
-    print(f'train dataloder length: {len(opencood_train_dataset)}')
+    #print(f'train dataloder length: {len(opencood_train_dataset)}')
 
-    # print(opencood_train_dataset.__getitem__(0)['ego'].keys())
-    # print(opencood_train_dataset.__getitem__(0)['ego']['processed_lidar'].keys())
-    opencood_train_dataset.__getitem__(0)
+    # #print(opencood_train_dataset.__getitem__(0)['ego'].keys())
+    # #print(opencood_train_dataset.__getitem__(0)['ego']['processed_lidar'].keys())
+    opencood_train_dataset.__getitem__(376)
 
 
     # for key in opencood_train_dataset.__getitem__(0)['ego'].keys():
-    #     print(opencood_train_dataset.__getitem__(0)['ego'][key].shape)
+    #     #print(opencood_train_dataset.__getitem__(0)['ego'][key].shape)
     # for i in range(10):
-    #     print(opencood_train_dataset[i])
+    #     #print(opencood_train_dataset[i])
         # break

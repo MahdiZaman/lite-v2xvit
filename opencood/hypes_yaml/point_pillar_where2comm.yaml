@@ -1,6 +1,6 @@
 name: point_pillar_where2comm
-root_dir: '/data/opv2x/train'
-validate_dir: '/data/opv2x/validate'
+root_dir: '/home/ma906813/projectmulti_agent_perception/data/v2xset/train_subset' #'/project/data/v2xset/train'  #'/data/opv2x/train'
+validate_dir: '/home/ma906813/projectmulti_agent_perception/data/v2xset/validate' #'/project/data/v2xset/validate'  #'/data/opv2x/validate'
 
 
 wild_setting:

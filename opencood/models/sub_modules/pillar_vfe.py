@@ -166,7 +166,7 @@ class PillarVFE(nn.Module):
             The mask aligns with the number of points per voxel and ensures consistent shapes across the batch.
         '''
         voxel_count = features.shape[1]
-        mask = self.get_paddings_indicator(voxel_num_points, voxel_count, axis=0)
+        mask = self.get_paddings_indicator(voxel_num_points, voxel_count, axis=0)   # mask for padding "voxels" which has less than 32 points
         mask = torch.unsqueeze(mask, -1).type_as(voxel_features)
         features *= mask    # [B, 32, 10]   # 10 = (x,y,z,intensity) , f_cluster, f_center = 4 + 3 + 3
         

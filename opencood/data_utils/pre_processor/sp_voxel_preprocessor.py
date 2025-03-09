@@ -56,6 +56,7 @@ class SpVoxelPreprocessor(BasePreprocessor):
             )
 
     def preprocess(self, pcd_np):
+        # print(f'pcd_np shape:, {pcd_np.shape}, {pcd_np.dtype}')
         data_dict = {}
         if self.spconv == 1:
             voxel_output = self.voxel_generator.generate(pcd_np)
@@ -81,6 +82,11 @@ class SpVoxelPreprocessor(BasePreprocessor):
         data_dict['voxel_features'] = voxels
         data_dict['voxel_coords'] = coordinates
         data_dict['voxel_num_points'] = num_points
+        
+        # print(f'voxel_features shape:, {data_dict["voxel_features"].shape}, {data_dict["voxel_features"].dtype}')
+        # print(f'voxel_coords shape:, {data_dict["voxel_coords"].shape}, {data_dict["voxel_coords"].dtype}')
+        # print(f'voxel_num_points shape:, {data_dict["voxel_num_points"].shape}, {data_dict["voxel_num_points"].dtype}')
+        
 
         return data_dict
 
