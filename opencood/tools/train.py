@@ -29,6 +29,8 @@ def train_parser():
                         help="whether train with half precision.")
     parser.add_argument('--dist_url', default='env://',
                         help='url used to set up distributed training')
+    parser.add_argument("--nautilus", action='store_true',
+                        help="If set, output logs will be saved to the nautilus directory")
     opt = parser.parse_args()
     return opt
 
@@ -90,7 +92,7 @@ def main():
         init_epoch = 0
         # if we train the model from scratch, we need to create a folder
         # to save the model,
-        saved_path = train_utils.setup_train(hypes)
+        saved_path = train_utils.setup_train(hypes, opt.nautilus)
 
     # we assume gpu is necessary
     if torch.cuda.is_available():

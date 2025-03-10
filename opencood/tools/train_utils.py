@@ -64,7 +64,7 @@ def load_saved_model(saved_path, model):
     return initial_epoch, model
 
 
-def setup_train(hypes):
+def setup_train(hypes, nautilus=False):
     """
     Create folder for saved model based on current timestep and model name
 
@@ -79,8 +79,11 @@ def setup_train(hypes):
     folder_name = current_time.strftime("_%Y_%m_%d_%H_%M_%S")
     folder_name = model_name + folder_name
 
-    current_path = os.path.dirname(__file__)
-    current_path = os.path.join(current_path, '../logs')
+    if nautilus:
+        current_path = '/project/results'
+    else:
+        current_path = os.path.dirname(__file__)
+        current_path = os.path.join(current_path, '../logs')
 
     full_path = os.path.join(current_path, folder_name)
 
