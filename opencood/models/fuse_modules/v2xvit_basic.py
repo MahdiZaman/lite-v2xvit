@@ -90,12 +90,11 @@ class V2XFusionBlock(nn.Module):
             att = HGTCavAttention(cav_att_config['dim'],
                                   heads=cav_att_config['heads'],
                                   dim_head=cav_att_config['dim_head'],
-                                  dropout=cav_att_config['dropout']) if \
-                cav_att_config['use_hetero'] else \
-                CavAttention(cav_att_config['dim'],
-                             heads=cav_att_config['heads'],
-                             dim_head=cav_att_config['dim_head'],
-                             dropout=cav_att_config['dropout'])
+                                  dropout=cav_att_config['dropout']) if cav_att_config['use_hetero'] else \
+                    CavAttention(cav_att_config['dim'],
+                                heads=cav_att_config['heads'],
+                                dim_head=cav_att_config['dim_head'],
+                                dropout=cav_att_config['dropout'])
             self.layers.append(nn.ModuleList([
                 PreNorm(cav_att_config['dim'], att),
                 PreNorm(cav_att_config['dim'],
@@ -114,9 +113,14 @@ class V2XFusionBlock(nn.Module):
                                                    'fusion_method']))]))
 
     def forward(self, x, mask, prior_encoding):
+        # i = 0
         for cav_attn, pwindow_attn in self.layers:
+            # print(f'---------- cav_attn in V2XFusionBlock {i} ----------')
             x = cav_attn(x, mask=mask, prior_encoding=prior_encoding) + x
-            x = pwindow_attn(x) + x
+            # print(f'x after cav_attn: {x.shape}')
+            # x = pwindow_attn(x) + x   ## Turning off mswin
+            # print(f'x after pwindow_attn: {x.shape}')
+            # i += 1
         return x
 
 
@@ -148,9 +152,7 @@ class V2XTEncoder(nn.Module):
         for _ in range(depth):
             self.layers.append(nn.ModuleList([
                 V2XFusionBlock(num_blocks, cav_att_config, pwindow_att_config),
-                PreNorm(cav_att_config['dim'],
-                        FeedForward(cav_att_config['dim'], mlp_dim,
-                                    dropout=dropout))
+                PreNorm(cav_att_config['dim'], FeedForward(cav_att_config['dim'], mlp_dim, dropout=dropout))
             ]))
 
     def forward(self, x, mask, spatial_correction_matrix):
@@ -166,15 +168,21 @@ class V2XTEncoder(nn.Module):
             dt = prior_encoding[:, :, 0, 0, 1].to(torch.int)
             x = self.rte(x, dt)
         x = self.sttf(x, mask, spatial_correction_matrix)
+        # print(f'x after sttf: {x.shape}')
         com_mask = mask.unsqueeze(1).unsqueeze(2).unsqueeze(
             3) if not self.use_roi_mask else get_roi_and_cav_mask(x.shape,
                                                                   mask,
                                                                   spatial_correction_matrix,
                                                                   self.discrete_ratio,
                                                                   self.downsample_rate)
+        # i = 0
         for attn, ff in self.layers:
+            # print(f'---------- attn in V2XTEncoder {i} ----------')
             x = attn(x, mask=com_mask, prior_encoding=prior_encoding)
+            # print(f'x after attn: {x.shape}')
             x = ff(x) + x
+            # print(f'x after ff: {x.shape}')
+            # i += 1
         return x
 
 
