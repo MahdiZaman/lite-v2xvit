@@ -114,6 +114,7 @@ model:
         use_roi_mask: true
         use_RTE: &use_RTE true
         RTE_ratio: &RTE_ratio 2 # 2 means the dt has 100ms interval while 1 means 50 ms interval
+        use_wavelet: true
         # agent-wise attention
         cav_att_config: &cav_att_config
           dim: 256
