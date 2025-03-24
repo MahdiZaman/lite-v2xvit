@@ -7,6 +7,7 @@ from opencood.models.sub_modules.torch_transformation_utils import \
     get_transformation_matrix, warp_affine, get_roi_and_cav_mask, \
     get_discretized_transformation_matrix
 
+from opencood.models.fuse_modules.wavelet_attn import WaveletWindowAttention
 
 class STTF(nn.Module):
     def __init__(self, args):
@@ -80,48 +81,83 @@ class RTE(nn.Module):
 
 
 class V2XFusionBlock(nn.Module):
-    def __init__(self, num_blocks, cav_att_config, pwindow_config):
+    def __init__(self, num_blocks, cav_att_config, pwindow_config, use_wavelet=False):
         super().__init__()
         # first multi-agent attention and then multi-window attention
         self.layers = nn.ModuleList([])
         self.num_blocks = num_blocks
-
-        for _ in range(num_blocks):
-            att = HGTCavAttention(cav_att_config['dim'],
-                                  heads=cav_att_config['heads'],
-                                  dim_head=cav_att_config['dim_head'],
-                                  dropout=cav_att_config['dropout']) if cav_att_config['use_hetero'] else \
-                    CavAttention(cav_att_config['dim'],
-                                heads=cav_att_config['heads'],
-                                dim_head=cav_att_config['dim_head'],
-                                dropout=cav_att_config['dropout'])
-            self.layers.append(nn.ModuleList([
-                PreNorm(cav_att_config['dim'], att),
-                PreNorm(cav_att_config['dim'],
-                        PyramidWindowAttention(pwindow_config['dim'],
-                                               heads=pwindow_config['heads'],
-                                               dim_heads=pwindow_config[
-                                                   'dim_head'],
-                                               drop_out=pwindow_config[
-                                                   'dropout'],
-                                               window_size=pwindow_config[
-                                                   'window_size'],
-                                               relative_pos_embedding=
-                                               pwindow_config[
-                                                   'relative_pos_embedding'],
-                                               fuse_method=pwindow_config[
-                                                   'fusion_method']))]))
+        self.use_wavelet = use_wavelet
+        
+        if self.use_wavelet:
+            for _ in range(num_blocks):
+                att = HGTCavAttention(cav_att_config['dim'],
+                                    heads=cav_att_config['heads'],
+                                    dim_head=cav_att_config['dim_head'],
+                                    dropout=cav_att_config['dropout']) if cav_att_config['use_hetero'] else \
+                        CavAttention(cav_att_config['dim'],
+                                    heads=cav_att_config['heads'],
+                                    dim_head=cav_att_config['dim_head'],
+                                    dropout=cav_att_config['dropout'])
+                self.layers.append(nn.ModuleList([
+                    PreNorm(cav_att_config['dim'], att),
+                    PreNorm(cav_att_config['dim'],
+                            WaveletWindowAttention(wavelet='db1', level=2, mode='zero',
+                                                    dim=256,
+                                                    heads=4,
+                                                    dim_head=16,
+                                                    drop_out=0.3,
+                                                    window_size=4,  # unused with global attention
+                                                    relative_pos_embedding=True))]))
+        else:
+            for _ in range(num_blocks):
+                att = HGTCavAttention(cav_att_config['dim'],
+                                    heads=cav_att_config['heads'],
+                                    dim_head=cav_att_config['dim_head'],
+                                    dropout=cav_att_config['dropout']) if cav_att_config['use_hetero'] else \
+                        CavAttention(cav_att_config['dim'],
+                                    heads=cav_att_config['heads'],
+                                    dim_head=cav_att_config['dim_head'],
+                                    dropout=cav_att_config['dropout'])
+                self.layers.append(nn.ModuleList([
+                    PreNorm(cav_att_config['dim'], att),
+                    PreNorm(cav_att_config['dim'],
+                            PyramidWindowAttention(pwindow_config['dim'],
+                                                heads=pwindow_config['heads'],
+                                                dim_heads=pwindow_config[
+                                                    'dim_head'],
+                                                drop_out=pwindow_config[
+                                                    'dropout'],
+                                                window_size=pwindow_config[
+                                                    'window_size'],
+                                                relative_pos_embedding=
+                                                pwindow_config[
+                                                    'relative_pos_embedding'],
+                                                fuse_method=pwindow_config[
+                                                    'fusion_method']))]))
 
     def forward(self, x, mask, prior_encoding):
+        # i = 0
+        # for cav_attn, pwindow_attn in self.layers:
+        #     print(f'---------- cav_attn in V2XFusionBlock {i} ----------')
+        #     print(f'x: {x.shape}, mask: {mask.shape}, prior_encoding: {prior_encoding.shape}')
+        #     x = cav_attn(x, mask=mask, prior_encoding=prior_encoding) + x
+        #     # print(f'x after cav_attn: {x.shape}')
+        #     # x = pwindow_attn(x) + x   ## Turning off mswin
+        #     # print(f'x after pwindow_attn: {x.shape}')
+        #     i += 1
+        
         i = 0
-        for cav_attn, pwindow_attn in self.layers:
+        for cav_attn, attn in self.layers:
             print(f'---------- cav_attn in V2XFusionBlock {i} ----------')
             print(f'x: {x.shape}, mask: {mask.shape}, prior_encoding: {prior_encoding.shape}')
             x = cav_attn(x, mask=mask, prior_encoding=prior_encoding) + x
-            # print(f'x after cav_attn: {x.shape}')
-            # x = pwindow_attn(x) + x   ## Turning off mswin
-            # print(f'x after pwindow_attn: {x.shape}')
+            print(f'x after cav_attn: {x.shape}')
+            
+            x = attn(x) + x   # WaveletWindowAttention
+            print(f'x after WaveletWindowAttention: {x.shape}')
+            # exit()
             i += 1
+        
         return x
 
 
@@ -150,11 +186,22 @@ class V2XTEncoder(nn.Module):
         self.layers = nn.ModuleList([])
         if self.use_RTE:
             self.rte = RTE(cav_att_config['dim'], self.RTE_ratio)
-        for _ in range(depth):
-            self.layers.append(nn.ModuleList([
-                V2XFusionBlock(num_blocks, cav_att_config, pwindow_att_config),
-                PreNorm(cav_att_config['dim'], FeedForward(cav_att_config['dim'], mlp_dim, dropout=dropout))
-            ]))
+            
+            
+        self.use_wavelet = args['use_wavelet']
+            
+        if self.use_wavelet:
+            for _ in range(depth):
+                self.layers.append(nn.ModuleList([
+                    V2XFusionBlock(num_blocks, cav_att_config, pwindow_att_config, use_wavelet=True),
+                    PreNorm(cav_att_config['dim'], FeedForward(cav_att_config['dim'], mlp_dim, dropout=dropout))
+                ]))
+        else:            
+            for _ in range(depth):
+                self.layers.append(nn.ModuleList([
+                    V2XFusionBlock(num_blocks, cav_att_config, pwindow_att_config),
+                    PreNorm(cav_att_config['dim'], FeedForward(cav_att_config['dim'], mlp_dim, dropout=dropout))
+                ]))
 
     def forward(self, x, mask, spatial_correction_matrix):
 
