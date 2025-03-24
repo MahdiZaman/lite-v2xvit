@@ -48,16 +48,34 @@ class SplitAttn(nn.Module):
 
         # global average pooling, B, L, H, W, C
         x_gap = sw + mw + bw
-        # B, L, 1, 1, C
+        # print(f'sw: {sw.shape}, mw: {mw.shape}, bw: {bw.shape}, x_gap: {x_gap.shape}')        
         x_gap = x_gap.mean((2, 3), keepdim=True)
-        x_gap = self.act1(self.bn1(self.fc1(x_gap)))
-        # B, L, 1, 1, 3C
-        x_attn = self.fc2(x_gap)
-        # B L 1 1 3C
-        x_attn = self.rsoftmax(x_attn).view(B, L, 1, 1, -1)
+
+        x_gap = self.act1(self.bn1(self.fc1(x_gap)))    # B, L, 1, 1, C
+        
+        x_attn = self.fc2(x_gap)    # # B, L, 1, 1, 3C
+        
+        x_attn = self.rsoftmax(x_attn).view(B, L, 1, 1, -1)   # B, L, 1, 1, 3C
 
         out = sw * x_attn[:, :, :, :, 0:self.input_dim] + \
               mw * x_attn[:, :, :, :, self.input_dim:2*self.input_dim] +\
               bw * x_attn[:, :, :, :, self.input_dim*2:]
-
         return out
+
+def main():
+    # Define dummy inputs: three windows with shape [2, 2, 48, 176, 256]
+    B, L, H, W, C = 2, 2, 48, 176, 256
+    window1 = torch.randn(B, L, H, W, C)
+    window2 = torch.randn(B, L, H, W, C)
+    window3 = torch.randn(B, L, H, W, C)
+    window_list = [window1, window2, window3]
+
+    # Create an instance of SplitAttn with input_dim equal to 256.
+    split_attn = SplitAttn(input_dim=C)
+
+    # Run a forward pass through the SplitAttn module.
+    output = split_attn(window_list)
+    print("Output shape:", output.shape)
+
+if __name__ == "__main__":
+    main()

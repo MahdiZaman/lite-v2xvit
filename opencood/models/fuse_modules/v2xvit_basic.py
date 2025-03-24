@@ -113,14 +113,15 @@ class V2XFusionBlock(nn.Module):
                                                    'fusion_method']))]))
 
     def forward(self, x, mask, prior_encoding):
-        # i = 0
+        i = 0
         for cav_attn, pwindow_attn in self.layers:
-            # print(f'---------- cav_attn in V2XFusionBlock {i} ----------')
+            print(f'---------- cav_attn in V2XFusionBlock {i} ----------')
+            print(f'x: {x.shape}, mask: {mask.shape}, prior_encoding: {prior_encoding.shape}')
             x = cav_attn(x, mask=mask, prior_encoding=prior_encoding) + x
             # print(f'x after cav_attn: {x.shape}')
             # x = pwindow_attn(x) + x   ## Turning off mswin
             # print(f'x after pwindow_attn: {x.shape}')
-            # i += 1
+            i += 1
         return x
 
 
