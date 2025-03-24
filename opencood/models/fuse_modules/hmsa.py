@@ -109,7 +109,7 @@ class HGTCavAttention(nn.Module):
         return out
 
     def forward(self, x, mask, prior_encoding):
-        print(f'HMSA start. x: {x.shape}, mask: {mask.shape}, prior_encoding: {prior_encoding.shape}')
+        # print(f'HMSA start. x: {x.shape}, mask: {mask.shape}, prior_encoding: {prior_encoding.shape}')
         
         x = x.permute(0, 2, 3, 1, 4)    # x: (B, L, H, W, C) -> (B, H, W, L, C)
         
@@ -119,28 +119,28 @@ class HGTCavAttention(nn.Module):
                                 prior_encoding[:, :, 0, 0, :].split(
                                     [1, 1, 1], dim=-1)]     # prior_encoding: (B,L,H,W,3)
         
-        print(f'Attention computation start. x: {x.shape}, mask: {mask.shape}, prior_encoding: {prior_encoding.shape}')
+        # print(f'Attention computation start. x: {x.shape}, mask: {mask.shape}, prior_encoding: {prior_encoding.shape}')
         types = types.to(torch.int) # (B,L)
         dts = dts.to(torch.int)
         
         # features transformed into tokens based on their type
-        # print(f'----to_qkv----')
+        # # print(f'----to_qkv----')
         qkv = self.to_qkv(x, types) # qkv: torch.Size([2, 48, 176, 2, 256]), torch.Size([2, 48, 176, 2, 256]), torch.Size([2, 48, 176, 2, 256])
-        # print(f'qkv: {qkv[0].shape}, {qkv[1].shape}, {qkv[2].shape}')
+        # # print(f'qkv: {qkv[0].shape}, {qkv[1].shape}, {qkv[2].shape}')
         
         
         # (B,M,L,L,C_head,C_head)
         w_att, w_msg = self.get_hetero_edge_weights(x, types)
-        print(f'--- w_att: {w_att.shape}, w_msg: {w_msg.shape}')
+        # print(f'--- w_att: {w_att.shape}, w_msg: {w_msg.shape}')
         
         
         # q: (B, M, H, W, L, C)
-        print(f'qkv: {qkv[0].shape}, {qkv[1].shape}, {qkv[2].shape}')
+        # print(f'qkv: {qkv[0].shape}, {qkv[1].shape}, {qkv[2].shape}')
         q, k, v = map(lambda t: rearrange(t, 'b h w l (m c) -> b m h w l c', m=self.heads), (qkv))
-        print(f'--- q: {q.shape}, k: {k.shape}, v: {v.shape}')
+        # print(f'--- q: {q.shape}, k: {k.shape}, v: {v.shape}')
         
         # attention, (B, M, H, W, L, L)
-        print(f'q: {q.shape}, w_att: {w_att.shape}, k: {k.shape}')
+        # print(f'q: {q.shape}, w_att: {w_att.shape}, k: {k.shape}')
         att_map = torch.einsum(
             'b m h w i p, b m i j p q, bm h w j q -> b m h w i j',
             [q, w_att, k]) * self.scale
@@ -148,28 +148,28 @@ class HGTCavAttention(nn.Module):
         att_map = att_map.masked_fill(mask == 0, -float('inf'))
         # softmax
         att_map = self.attend(att_map)
-        print(f'--- att_map: {att_map.shape}')
+        # print(f'--- att_map: {att_map.shape}')
         
 
         # out:(B, M, H, W, L, C_head)
-        print(f'v: {v.shape}, w_msg: {w_msg.shape}')
+        # print(f'v: {v.shape}, w_msg: {w_msg.shape}')
         v_msg = torch.einsum('b m i j p c, b m h w j p -> b m h w i j c',
                             w_msg, v)
-        print(f'--- v_msg: {v_msg.shape}')
+        # print(f'--- v_msg: {v_msg.shape}')
         
         out = torch.einsum('b m h w i j, b m h w i j c -> b m h w i c',
                         att_map, v_msg)
-        print(f'--- out: {out.shape}')
+        # print(f'--- out: {out.shape}')
         
 
         out = rearrange(out, 'b m h w l c -> b h w l (m c)',
                         m=self.heads)
-        print(f'--- out after rearrange: {out.shape}')
+        # print(f'--- out after rearrange: {out.shape}')
         out = self.to_out(out, types)
         out = self.drop_out(out)
         # (B L H W C)
         out = out.permute(0, 3, 1, 2, 4)
-        print(f'out: {out.shape}')
+        # print(f'out: {out.shape}')
         return out
     
     
