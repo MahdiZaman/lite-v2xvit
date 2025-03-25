@@ -88,52 +88,38 @@ class V2XFusionBlock(nn.Module):
         self.num_blocks = num_blocks
         self.use_wavelet = use_wavelet
         
-        if self.use_wavelet:
-            for _ in range(num_blocks):
-                att = HGTCavAttention(cav_att_config['dim'],
-                                    heads=cav_att_config['heads'],
-                                    dim_head=cav_att_config['dim_head'],
-                                    dropout=cav_att_config['dropout']) if cav_att_config['use_hetero'] else \
-                        CavAttention(cav_att_config['dim'],
-                                    heads=cav_att_config['heads'],
-                                    dim_head=cav_att_config['dim_head'],
-                                    dropout=cav_att_config['dropout'])
-                self.layers.append(nn.ModuleList([
-                    PreNorm(cav_att_config['dim'], att),
-                    PreNorm(cav_att_config['dim'],
-                            WaveletWindowAttention(wavelet='db1', level=2, mode='zero',
-                                                    dim=256,
-                                                    heads=4,
-                                                    dim_head=16,
-                                                    drop_out=0.3,
-                                                    window_size=4,  # unused with global attention
-                                                    relative_pos_embedding=True))]))
-        else:
-            for _ in range(num_blocks):
-                att = HGTCavAttention(cav_att_config['dim'],
-                                    heads=cav_att_config['heads'],
-                                    dim_head=cav_att_config['dim_head'],
-                                    dropout=cav_att_config['dropout']) if cav_att_config['use_hetero'] else \
-                        CavAttention(cav_att_config['dim'],
-                                    heads=cav_att_config['heads'],
-                                    dim_head=cav_att_config['dim_head'],
-                                    dropout=cav_att_config['dropout'])
-                self.layers.append(nn.ModuleList([
-                    PreNorm(cav_att_config['dim'], att),
-                    PreNorm(cav_att_config['dim'],
-                            PyramidWindowAttention(pwindow_config['dim'],
-                                                heads=pwindow_config['heads'],
-                                                dim_heads=pwindow_config[
-                                                    'dim_head'],
-                                                drop_out=pwindow_config[
-                                                    'dropout'],
-                                                window_size=pwindow_config[
-                                                    'window_size'],
-                                                relative_pos_embedding=
-                                                pwindow_config[
-                                                    'relative_pos_embedding'],
-                                                fuse_method=pwindow_config[
-                                                    'fusion_method']))]))
+        for _ in range(num_blocks):
+            att = HGTCavAttention(cav_att_config['dim'],
+                                heads=cav_att_config['heads'],
+                                dim_head=cav_att_config['dim_head'],
+                                dropout=cav_att_config['dropout']) if cav_att_config['use_hetero'] else \
+                    CavAttention(cav_att_config['dim'],
+                                heads=cav_att_config['heads'],
+                                dim_head=cav_att_config['dim_head'],
+                                dropout=cav_att_config['dropout'])
+            self.layers.append(nn.ModuleList([
+                PreNorm(cav_att_config['dim'], att),
+                PreNorm(cav_att_config['dim'],
+                        WaveletWindowAttention(wavelet='db1', level=2, mode='zero',
+                                                dim=256,
+                                                heads=4,
+                                                dim_head=16,
+                                                drop_out=0.3,
+                                                window_size=4,  # unused with global attention
+                                                relative_pos_embedding=True))])) if self.use_wavelet else \
+                        PyramidWindowAttention(pwindow_config['dim'],
+                                            heads=pwindow_config['heads'],
+                                            dim_heads=pwindow_config[
+                                                'dim_head'],
+                                            drop_out=pwindow_config[
+                                                'dropout'],
+                                            window_size=pwindow_config[
+                                                'window_size'],
+                                            relative_pos_embedding=
+                                            pwindow_config[
+                                                'relative_pos_embedding'],
+                                            fuse_method=pwindow_config[
+                                                'fusion_method'])
 
     def forward(self, x, mask, prior_encoding):
         # i = 0
@@ -146,18 +132,18 @@ class V2XFusionBlock(nn.Module):
         #     # print(f'x after pwindow_attn: {x.shape}')
         #     i += 1
         
-        i = 0
+        # i = 0
         for cav_attn, attn in self.layers:
-            print(f'---------- cav_attn in V2XFusionBlock {i} ----------')
-            print(f'x: {x.shape}, mask: {mask.shape}, prior_encoding: {prior_encoding.shape}')
+            # print(f'---------- cav_attn in V2XFusionBlock {i} ----------')
+            # print(f'x: {x.shape}, mask: {mask.shape}, prior_encoding: {prior_encoding.shape}')
             x = cav_attn(x, mask=mask, prior_encoding=prior_encoding) + x
-            print(f'x after cav_attn: {x.shape}')
+            # print(f'x after cav_attn: {x.shape}')
             
             x = attn(x) + x   # WaveletWindowAttention
-            print(f'x after WaveletWindowAttention: {x.shape}')
-            # exit()
-            i += 1
-        
+            # print(f'x after WaveletWindowAttention: {x.shape}')
+            
+            # i += 1
+            
         return x
 
 
