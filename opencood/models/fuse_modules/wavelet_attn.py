@@ -309,7 +309,7 @@ def main():
     
     model = WaveletWindowAttention(
         wavelet='db1',
-        level=2,
+        level=4,
         mode='zero',
         dim=C,
         heads=4,
@@ -318,8 +318,9 @@ def main():
         window_size=4,
         relative_pos_embedding=True
     )
-    
-    attn_out, Yh = model(dummy_input)
+    print(f'input: {dummy_input.shape}')
+    output = model(dummy_input)
+    print(f'output: {output.shape}')
     
 if __name__ == "__main__":
     main()

@@ -100,27 +100,27 @@ class V2XFusionBlock(nn.Module):
             self.layers.append(nn.ModuleList([
                 PreNorm(cav_att_config['dim'], att),
                 PreNorm(cav_att_config['dim'],
-                        WaveletWindowAttention(wavelet='db1', level=2, mode='zero',
+                        WaveletWindowAttention(wavelet='db1', level=4, mode='zero',
                                                 dim=256,
                                                 heads=4,
                                                 dim_head=16,
                                                 drop_out=0.3,
                                                 window_size=4,  # unused with global attention
-                                                relative_pos_embedding=True))])) if self.use_wavelet else \
-                        PyramidWindowAttention(pwindow_config['dim'],
-                                            heads=pwindow_config['heads'],
-                                            dim_heads=pwindow_config[
-                                                'dim_head'],
-                                            drop_out=pwindow_config[
-                                                'dropout'],
-                                            window_size=pwindow_config[
-                                                'window_size'],
-                                            relative_pos_embedding=
-                                            pwindow_config[
-                                                'relative_pos_embedding'],
-                                            fuse_method=pwindow_config[
-                                                'fusion_method'])
-
+                                                relative_pos_embedding=True) #if self.use_wavelet else \
+                        # PyramidWindowAttention(pwindow_config['dim'],
+                        #                     heads=pwindow_config['heads'],
+                        #                     dim_heads=pwindow_config[
+                        #                         'dim_head'],
+                        #                     drop_out=pwindow_config[
+                        #                         'dropout'],
+                        #                     window_size=pwindow_config[
+                        #                         'window_size'],
+                        #                     relative_pos_embedding=
+                        #                     pwindow_config[
+                        #                         'relative_pos_embedding'],
+                        #                     fuse_method=pwindow_config[
+                        #                         'fusion_method'])
+                        )]))
     def forward(self, x, mask, prior_encoding):
         # i = 0
         # for cav_attn, pwindow_attn in self.layers:
