@@ -346,7 +346,7 @@ class RectWindowAttention(nn.Module):
         return out
     
 
-class WaveletWindowAttention(nn.Module):
+class WaveletWindowAttentionSingleScale(nn.Module):
     def __init__(self, wavelet='db1', level=1, mode='zero',
                  dim=64, heads=4, dim_head=16, drop_out=0.1, window_size=7, relative_pos_embedding=True):
         """
@@ -385,24 +385,93 @@ class WaveletWindowAttention(nn.Module):
             Yh (list): List of detail coefficients from the wavelet transform.
         """
         # [B, L, 48, 176, 256]
-        #print(f'wavelet input: {x.shape}')
+        print(f'wavelet input: {x.shape}')
         
         # This returns Yl (approximation coefficients) and Yh (detail coefficients).
         Yl, Yh = self.wavelet_transform(x)  # Yl -> [B, L, 3, 11, 256]
         
         # Pass the low-frequency approximation coefficients to the attention module.
         # Yl is expected to be in the shape [B, L, H', W', C'].
-        #print(f'Yl input to window attention: {Yl.shape}')
+        print(f'Yl input to window attention: {Yl.shape}')
         
         attn_out = self.window_attention(Yl)    
         # attn_out = self.global_attention(Yl)
-        #print(f'attn_out: {attn_out.shape}')
+        print(f'attn_out: {attn_out.shape}')
         
         reconstructed = self.inverse_wavelet_transform(attn_out, Yh)
-        #print(f'reconstructed: {reconstructed.shape}')        
+        print(f'reconstructed: {reconstructed.shape}')        
         
         # return attn_out, Yh
         return reconstructed
+
+
+class WaveletWindowAttention(nn.Module):
+    def __init__(self, wavelet='db1', level=[1,2], mode='zero',
+                 dim=64, heads=4, dim_head=16, drop_out=0.1, window_size=7, relative_pos_embedding=True):
+        """
+        Combined model that applies a wavelet transform followed by a window attention module.
+        Now supports multiple decomposition levels provided as a list of integers.
+        
+        Args:
+            wavelet (str): Type of wavelet for the transform.
+            levels (list of int): List of decomposition levels.
+            mode (str): Signal extension mode.
+            dim (int): Input channel dimension for the attention module.
+            heads (int): Number of attention heads.
+            dim_head (int): Dimension of each attention head.
+            drop_out (float): Dropout rate in the attention module.
+            window_size (int or tuple): Spatial window size for local attention.
+            relative_pos_embedding (bool): Whether to use relative positional embeddings.
+        """
+        super(WaveletWindowAttention, self).__init__()
+        
+        # The same window attention module is used for each level.
+        self.window_attention = RectWindowAttention(dim=dim, heads=heads, dim_head=dim_head,
+                                                    drop_out=drop_out, window_size=window_size,
+                                                    relative_pos_embedding=relative_pos_embedding)
+        # self.global_attention = GlobalAttention(dim=dim, heads=heads, dropout=0.3)
+        
+        # CHANGES:
+        # Instead of a single wavelet transform, create a module list for each level.
+        self.wavelet_transforms = nn.ModuleList([
+            WaveletTransform2D(wavelet=wavelet, level=lev, mode=mode) for lev in level
+        ])
+        # Create a corresponding module list for the inverse transforms.
+        self.inverse_wavelet_transforms = nn.ModuleList([
+            InverseWaveletTransform2D(wavelet=wavelet, level=lev, mode=mode) for lev in level
+        ])
+        self.level = level  # store levels for reference
+
+    def forward(self, x):
+        """
+        Args:
+            x (torch.Tensor): Input tensor of shape [B, L, H, W, C].
+            
+        Returns:
+            merged_reconstruction (torch.Tensor): Merged reconstruction from all levels.
+                Typically, shape [B, L, H, W, C].
+        """
+        # CHANGES:
+        # Run each wavelet transform and process its approximation with window attention.
+        reconstructions = []  # Collect the reconstructed outputs for each level.
+        for wavelet_transform, inverse_wavelet_transform in zip(self.wavelet_transforms, self.inverse_wavelet_transforms):
+            #print(f'wavelet input---------------------------------------------: {x.shape}')
+            # Wavelet transform: returns approximation (Yl) and detail coefficients (Yh)
+            Yl, Yh = wavelet_transform(x)
+            #print(f'Yl input to window attention: {Yl.shape}')
+            # Apply window attention on the low-frequency approximation.
+            attn_out = self.window_attention(Yl)
+            #print(f'attn_out: {attn_out.shape}')
+            # Inverse wavelet transform: reconstructs the full-resolution output.
+            rec = inverse_wavelet_transform(attn_out, Yh)
+            #print(f'reconstructed: {rec.shape}')
+            reconstructions.append(rec)
+        
+        # Merge the reconstructions from different levels.
+        # For example, one can take an element-wise average.
+        merged_reconstruction = sum(reconstructions) / len(reconstructions)
+        #print(f'merged_reconstruction: {merged_reconstruction.shape}')
+        return merged_reconstruction
 
         
 def main():
@@ -416,15 +485,10 @@ def main():
     
     # Create a dummy input tensor
     dummy_input = torch.randn(B, L, H, W, C)
-
-    
-    # # WaveletTransform3D
-    # wavelet_transform = WaveletTransform2D(wavelet='db1', level=1, mode='zero')
-    # out_l, out_h = wavelet_transform(dummy_input)
     
     model = WaveletWindowAttention(
         wavelet='db1',
-        level=4,
+        level=[2,3,4],
         mode='zero',
         dim=C,
         heads=4,
