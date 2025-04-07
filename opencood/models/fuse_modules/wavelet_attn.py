@@ -72,10 +72,8 @@ def get_relative_distances(window_size):
     distances = indices[None, :, :] - indices[:, None, :]
     return distances
 
-
 class BaseWindowAttention(nn.Module):
-    def __init__(self, dim, heads, dim_head, drop_out, window_size,
-                 relative_pos_embedding):
+    def __init__(self, dim, heads, dim_head, drop_out, window_size, relative_pos_embedding):
         super().__init__()
         inner_dim = dim_head * heads
         # print(dim, heads, dim_head, drop_out, window_size,
@@ -228,6 +226,124 @@ class InverseWaveletTransform2D(nn.Module):
         rec_tensor = rec.permute(0, 1, 3, 4, 2).contiguous()
         return rec_tensor
 
+
+
+
+def get_relative_distances_rect(window_height, window_width):
+    # Create a list of [i, j] coordinates for a grid of size (window_height, window_width)
+    indices = torch.tensor([[i, j] for i in range(window_height) for j in range(window_width)])
+    # print(f'indices: {indices.shape}')
+    
+    # Compute pairwise differences
+    relative_indices = indices[None, :, :] - indices[:, None, :]  # shape: [window_height*window_width, window_height*window_width, 2]
+    # print(f'relative_indices: {relative_indices.shape}')
+    
+    # Shift the differences so they are non-negative
+    relative_indices[..., 0] += window_height - 1
+    relative_indices[..., 1] += window_width - 1
+    
+    return relative_indices
+
+
+class RectWindowAttention(nn.Module):
+    def __init__(self, dim, heads, dim_head, drop_out, window_size,
+                 relative_pos_embedding):
+        """
+        BaseWindowAttention Adapted for a rectangular window. 
+        `window_size` should now be a tuple: (window_height, window_width)
+        """
+        super().__init__()
+        inner_dim = dim_head * heads
+        self.heads = heads
+        self.scale = dim_head ** -0.5
+        
+        # Change 1: Accept a tuple for window size.
+        if isinstance(window_size, (list, tuple)):
+            self.window_height = window_size[0]
+            self.window_width = window_size[1]
+        else:
+            self.window_height = window_size
+            self.window_width = window_size
+        
+        self.relative_pos_embedding = relative_pos_embedding
+
+        self.to_qkv = nn.Linear(dim, inner_dim * 3, bias=False)
+        # print(f'dim: {dim}, inner_dim: {inner_dim}')
+        # exit()
+
+        # Change 2: Adapt relative positional encoding for rectangular windows.
+        if self.relative_pos_embedding:
+            self.relative_indices = get_relative_distances_rect(self.window_height, self.window_width)
+            self.pos_embedding = nn.Parameter(torch.randn(2 * self.window_height - 1,
+                                                          2 * self.window_width - 1))
+        else:
+            self.pos_embedding = nn.Parameter(torch.randn(self.window_height * self.window_width,
+                                                          self.window_height * self.window_width))
+
+        self.to_out = nn.Sequential(
+            nn.Linear(inner_dim, dim),
+            nn.Dropout(drop_out)
+        )
+
+    def forward(self, x):
+        # Here x is expected to be of shape [B, L, H, W, C]
+        # In our use case: [B, L, 3, 11, 256]
+        b, l, h, w, c = x.shape  # h should be 3, w should be 11
+        m = self.heads  # Here, m = 4
+        
+        #print(f'x input to Base Attention: {x.shape}')
+        #print(f'b: {b}, l: {l}, h: {h}, w: {w}, c: {c}, m: {m}')
+        qkv = self.to_qkv(x).chunk(3, dim=-1)
+        #print(f'qkv: {qkv[0].shape}, {qkv[1].shape}, {qkv[2].shape}')
+        
+        # Change 3: Use rectangular window sizes.
+        # Compute number of windows along each spatial dimension.
+        new_h = h // self.window_height  # for input, 3//3 = 1
+        new_w = w // self.window_width   # for input, 11//11 = 1
+
+        w_h = self.window_height
+        w_w = self.window_width
+        
+        #print(f'h: {h}, w: {w}, new_h: {new_h}, new_w: {new_w}, m: {m}, c: {c}')
+        #print(f'w_h: {w_h}, w_w: {w_w}')
+        
+        # Change 4: Update rearrange to use window_height and window_width.
+        q, k, v = map(
+            lambda t: rearrange(t,
+                                'b l (new_h w_h) (new_w w_w) (m c) -> b l m (new_h new_w) (w_h w_w) c',
+                                m=m, w_h=self.window_height, w_w=self.window_width),
+            qkv)
+        #print(f'q: {q.shape}, k: {k.shape}, v: {v.shape}')
+        
+        # Compute attention scores with scaled dot-product and modulate by relative position bias.
+        dots = torch.einsum('b l m h i c, b l m h j c -> b l m h i j',
+                            q, k) * self.scale
+        #print(f'dots: {dots.shape}')
+        
+        if self.relative_pos_embedding:
+            # Change 5: The indexing remains the same since self.relative_indices is computed for a rectangular window.
+            dots += self.pos_embedding[self.relative_indices[:, :, 0],
+                                       self.relative_indices[:, :, 1]]
+        else:
+            dots += self.pos_embedding
+
+        attn = dots.softmax(dim=-1)
+        #print(f'attn: {attn.shape}')
+
+        out = torch.einsum('b l m h i j, b l m h j c -> b l m h i c', attn, v)
+        #print(f'out1: {out.shape}')
+        
+        # Change 6: Rearranging using the updated window dimensions.
+        out = rearrange(out,
+                        'b l m (new_h new_w) (w_h w_w) c -> b l (new_h w_h) (new_w w_w) (m c)',
+                        m=self.heads, w_h=self.window_height, w_w=self.window_width,
+                        new_w=new_w, new_h=new_h)
+        #print(f'out2: {out.shape}')
+        
+        out = self.to_out(out)
+        #print(f'out3: {out.shape}')
+
+        return out
     
 
 class WaveletWindowAttention(nn.Module):
@@ -249,12 +365,13 @@ class WaveletWindowAttention(nn.Module):
         """
         super(WaveletWindowAttention, self).__init__()
         
-        self.wavelet_transform = WaveletTransform2D(wavelet=wavelet, level=level, mode=mode)
         
-        # self.window_attention = BaseWindowAttention(dim=dim, heads=heads, dim_head=dim_head,
-        #                                             drop_out=drop_out, window_size=window_size,
-        #                                             relative_pos_embedding=relative_pos_embedding)
-        self.global_attention = GlobalAttention(dim=dim, heads=heads, dropout=0.3)
+        self.window_attention = RectWindowAttention(dim=dim, heads=heads, dim_head=dim_head,
+                                                    drop_out=drop_out, window_size=window_size,
+                                                    relative_pos_embedding=relative_pos_embedding)
+        # self.global_attention = GlobalAttention(dim=dim, heads=heads, dropout=0.3)
+        
+        self.wavelet_transform = WaveletTransform2D(wavelet=wavelet, level=level, mode=mode)
         self.inverse_wavelet_transform = InverseWaveletTransform2D(wavelet=wavelet, level=level, mode=mode)
         
 
@@ -268,23 +385,21 @@ class WaveletWindowAttention(nn.Module):
             Yh (list): List of detail coefficients from the wavelet transform.
         """
         # [B, L, 48, 176, 256]
+        #print(f'wavelet input: {x.shape}')
         
         # This returns Yl (approximation coefficients) and Yh (detail coefficients).
         Yl, Yh = self.wavelet_transform(x)  # Yl -> [B, L, 3, 11, 256]
         
         # Pass the low-frequency approximation coefficients to the attention module.
         # Yl is expected to be in the shape [B, L, H', W', C'].
-        # print(f'Yl input to window attention: {Yl.shape}')
+        #print(f'Yl input to window attention: {Yl.shape}')
         
-        # TODO mzaman : FIXME BaseWindowAttention is not adapted to wavelet downsampled input
-        # attn_out = self.window_attention(Yl)
-        
-        # Using Global Attention on the smallest spatial scale. 
-        attn_out = self.global_attention(Yl)
-        # print(f'attn_out: {attn_out.shape}')
+        attn_out = self.window_attention(Yl)    
+        # attn_out = self.global_attention(Yl)
+        #print(f'attn_out: {attn_out.shape}')
         
         reconstructed = self.inverse_wavelet_transform(attn_out, Yh)
-        # print(f'reconstructed: {reconstructed.shape}')        
+        #print(f'reconstructed: {reconstructed.shape}')        
         
         # return attn_out, Yh
         return reconstructed
@@ -313,9 +428,9 @@ def main():
         mode='zero',
         dim=C,
         heads=4,
-        dim_head=16,
+        dim_head=64,
         drop_out=0.1,
-        window_size=4,
+        window_size=(3,11),  # Rectangular window size
         relative_pos_embedding=True
     )
     print(f'input: {dummy_input.shape}')

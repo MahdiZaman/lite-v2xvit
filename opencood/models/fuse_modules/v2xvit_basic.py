@@ -103,9 +103,9 @@ class V2XFusionBlock(nn.Module):
                         WaveletWindowAttention(wavelet='db1', level=4, mode='zero',
                                                 dim=256,
                                                 heads=4,
-                                                dim_head=16,
+                                                dim_head=64,
                                                 drop_out=0.3,
-                                                window_size=4,  # unused with global attention
+                                                window_size=(3,11),  # rectangular window
                                                 relative_pos_embedding=True) #if self.use_wavelet else \
                         # PyramidWindowAttention(pwindow_config['dim'],
                         #                     heads=pwindow_config['heads'],
