@@ -245,35 +245,134 @@ def get_relative_distances_rect(window_height, window_width):
     return relative_indices
 
 
+# class RectWindowAttention(nn.Module):
+#     def __init__(self, dim, heads, dim_head, drop_out, window_size,
+#                  relative_pos_embedding):
+#         """
+#         BaseWindowAttention Adapted for a rectangular window. 
+#         `window_size` should now be a tuple: (window_height, window_width)
+#         """
+#         super().__init__()
+#         inner_dim = dim_head * heads
+#         self.heads = heads
+#         self.scale = dim_head ** -0.5
+        
+#         # Change 1: Accept a tuple for window size.
+#         if isinstance(window_size, (list, tuple)):
+#             self.window_height = window_size[0]
+#             self.window_width = window_size[1]
+#         else:
+#             self.window_height = window_size
+#             self.window_width = window_size
+        
+#         self.relative_pos_embedding = relative_pos_embedding
+
+#         self.to_qkv = nn.Linear(dim, inner_dim * 3, bias=False)
+#         # print(f'dim: {dim}, inner_dim: {inner_dim}')
+#         # exit()
+
+#         # Change 2: Adapt relative positional encoding for rectangular windows.
+#         if self.relative_pos_embedding:
+#             self.relative_indices = get_relative_distances_rect(self.window_height, self.window_width)
+#             self.pos_embedding = nn.Parameter(torch.randn(2 * self.window_height - 1,
+#                                                           2 * self.window_width - 1))
+#         else:
+#             self.pos_embedding = nn.Parameter(torch.randn(self.window_height * self.window_width,
+#                                                           self.window_height * self.window_width))
+
+#         self.to_out = nn.Sequential(
+#             nn.Linear(inner_dim, dim),
+#             nn.Dropout(drop_out)
+#         )
+
+#     def forward(self, x):
+#         # Here x is expected to be of shape [B, L, H, W, C]
+#         # In our use case: [B, L, 3, 11, 256]
+#         b, l, h, w, c = x.shape  # h should be 3, w should be 11
+#         m = self.heads  # Here, m = 4
+        
+#         #print(f'x input to Base Attention: {x.shape}')
+#         #print(f'b: {b}, l: {l}, h: {h}, w: {w}, c: {c}, m: {m}')
+#         qkv = self.to_qkv(x).chunk(3, dim=-1)
+#         #print(f'qkv: {qkv[0].shape}, {qkv[1].shape}, {qkv[2].shape}')
+        
+#         # Change 3: Use rectangular window sizes.
+#         # Compute number of windows along each spatial dimension.
+#         new_h = h // self.window_height  # for input, 3//3 = 1
+#         new_w = w // self.window_width   # for input, 11//11 = 1
+
+#         w_h = self.window_height
+#         w_w = self.window_width
+        
+#         #print(f'h: {h}, w: {w}, new_h: {new_h}, new_w: {new_w}, m: {m}, c: {c}')
+#         #print(f'w_h: {w_h}, w_w: {w_w}')
+        
+#         # Change 4: Update rearrange to use window_height and window_width.
+#         q, k, v = map(
+#             lambda t: rearrange(t,
+#                                 'b l (new_h w_h) (new_w w_w) (m c) -> b l m (new_h new_w) (w_h w_w) c',
+#                                 m=m, w_h=self.window_height, w_w=self.window_width),
+#             qkv)
+#         #print(f'q: {q.shape}, k: {k.shape}, v: {v.shape}')
+        
+#         # Compute attention scores with scaled dot-product and modulate by relative position bias.
+#         dots = torch.einsum('b l m h i c, b l m h j c -> b l m h i j',
+#                             q, k) * self.scale
+#         #print(f'dots: {dots.shape}')
+        
+#         if self.relative_pos_embedding:
+#             # Change 5: The indexing remains the same since self.relative_indices is computed for a rectangular window.
+#             dots += self.pos_embedding[self.relative_indices[:, :, 0],
+#                                        self.relative_indices[:, :, 1]]
+#         else:
+#             dots += self.pos_embedding
+
+#         attn = dots.softmax(dim=-1)
+#         #print(f'attn: {attn.shape}')
+
+#         out = torch.einsum('b l m h i j, b l m h j c -> b l m h i c', attn, v)
+#         #print(f'out1: {out.shape}')
+        
+#         # Change 6: Rearranging using the updated window dimensions.
+#         out = rearrange(out,
+#                         'b l m (new_h new_w) (w_h w_w) c -> b l (new_h w_h) (new_w w_w) (m c)',
+#                         m=self.heads, w_h=self.window_height, w_w=self.window_width,
+#                         new_w=new_w, new_h=new_h)
+#         #print(f'out2: {out.shape}')
+        
+#         out = self.to_out(out)
+#         #print(f'out3: {out.shape}')
+
+#         return out
+    
+
 class RectWindowAttention(nn.Module):
-    def __init__(self, dim, heads, dim_head, drop_out, window_size,
-                 relative_pos_embedding):
+    def __init__(self, dim, heads, dim_head, drop_out, window_size, relative_pos_embedding):
         """
-        BaseWindowAttention Adapted for a rectangular window. 
-        `window_size` should now be a tuple: (window_height, window_width)
+        BaseWindowAttention adapted for a rectangular window.
+        `window_size` should be a tuple: (window_height, window_width).
         """
         super().__init__()
         inner_dim = dim_head * heads
         self.heads = heads
         self.scale = dim_head ** -0.5
-        
-        # Change 1: Accept a tuple for window size.
+
+        # Accept a tuple for window size.
         if isinstance(window_size, (list, tuple)):
             self.window_height = window_size[0]
             self.window_width = window_size[1]
         else:
             self.window_height = window_size
             self.window_width = window_size
-        
+
         self.relative_pos_embedding = relative_pos_embedding
 
         self.to_qkv = nn.Linear(dim, inner_dim * 3, bias=False)
-        # print(f'dim: {dim}, inner_dim: {inner_dim}')
-        # exit()
 
-        # Change 2: Adapt relative positional encoding for rectangular windows.
+        # Register relative indices as a buffer so that they are properly moved across devices.
         if self.relative_pos_embedding:
-            self.relative_indices = get_relative_distances_rect(self.window_height, self.window_width)
+            rel_indices = get_relative_distances_rect(self.window_height, self.window_width)
+            self.register_buffer('relative_indices', rel_indices)
             self.pos_embedding = nn.Parameter(torch.randn(2 * self.window_height - 1,
                                                           2 * self.window_width - 1))
         else:
@@ -286,65 +385,49 @@ class RectWindowAttention(nn.Module):
         )
 
     def forward(self, x):
-        # Here x is expected to be of shape [B, L, H, W, C]
-        # In our use case: [B, L, 3, 11, 256]
-        b, l, h, w, c = x.shape  # h should be 3, w should be 11
+        # x expected shape: [B, L, H, W, C]. For example: [B, L, 3, 11, 256]
+        b, l, h, w, c = x.shape  # h: 3, w: 11 in our use-case.
         m = self.heads  # Here, m = 4
         
-        #print(f'x input to Base Attention: {x.shape}')
-        #print(f'b: {b}, l: {l}, h: {h}, w: {w}, c: {c}, m: {m}')
+        # Project input to Q, K, V. Resulting shape: [B, L, H, W, inner_dim*3].
         qkv = self.to_qkv(x).chunk(3, dim=-1)
-        #print(f'qkv: {qkv[0].shape}, {qkv[1].shape}, {qkv[2].shape}')
         
-        # Change 3: Use rectangular window sizes.
         # Compute number of windows along each spatial dimension.
-        new_h = h // self.window_height  # for input, 3//3 = 1
-        new_w = w // self.window_width   # for input, 11//11 = 1
+        new_h = h // self.window_height  # e.g., 3//3 = 1
+        new_w = w // self.window_width    # e.g., 11//11 = 1
 
         w_h = self.window_height
         w_w = self.window_width
-        
-        #print(f'h: {h}, w: {w}, new_h: {new_h}, new_w: {new_w}, m: {m}, c: {c}')
-        #print(f'w_h: {w_h}, w_w: {w_w}')
-        
-        # Change 4: Update rearrange to use window_height and window_width.
+
+        # Rearrange tensors for multi-head attention.
         q, k, v = map(
             lambda t: rearrange(t,
                                 'b l (new_h w_h) (new_w w_w) (m c) -> b l m (new_h new_w) (w_h w_w) c',
-                                m=m, w_h=self.window_height, w_w=self.window_width),
+                                m=m, w_h=self.window_height, w_w=self.window_width).contiguous(),
             qkv)
-        #print(f'q: {q.shape}, k: {k.shape}, v: {v.shape}')
         
-        # Compute attention scores with scaled dot-product and modulate by relative position bias.
-        dots = torch.einsum('b l m h i c, b l m h j c -> b l m h i j',
-                            q, k) * self.scale
-        #print(f'dots: {dots.shape}')
+        # Compute attention scores.
+        dots = torch.einsum('b l m h i c, b l m h j c -> b l m h i j', q, k) * self.scale
         
         if self.relative_pos_embedding:
-            # Change 5: The indexing remains the same since self.relative_indices is computed for a rectangular window.
-            dots += self.pos_embedding[self.relative_indices[:, :, 0],
-                                       self.relative_indices[:, :, 1]]
+            # Use the registered relative_indices.
+            dots = dots + self.pos_embedding[self.relative_indices[:, :, 0],
+                                              self.relative_indices[:, :, 1]]
         else:
-            dots += self.pos_embedding
+            dots = dots + self.pos_embedding
 
         attn = dots.softmax(dim=-1)
-        #print(f'attn: {attn.shape}')
-
+        # Compute output.
         out = torch.einsum('b l m h i j, b l m h j c -> b l m h i c', attn, v)
-        #print(f'out1: {out.shape}')
         
-        # Change 6: Rearranging using the updated window dimensions.
         out = rearrange(out,
                         'b l m (new_h new_w) (w_h w_w) c -> b l (new_h w_h) (new_w w_w) (m c)',
                         m=self.heads, w_h=self.window_height, w_w=self.window_width,
-                        new_w=new_w, new_h=new_h)
-        #print(f'out2: {out.shape}')
+                        new_w=new_w, new_h=new_h).contiguous()
         
         out = self.to_out(out)
-        #print(f'out3: {out.shape}')
-
         return out
-    
+
 
 class WaveletWindowAttentionSingleScale(nn.Module):
     def __init__(self, wavelet='db1', level=1, mode='zero',
