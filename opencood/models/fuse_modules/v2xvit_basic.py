@@ -100,7 +100,9 @@ class V2XFusionBlock(nn.Module):
             self.layers.append(nn.ModuleList([
                 PreNorm(cav_att_config['dim'], att),
                 PreNorm(cav_att_config['dim'],
-                        WaveletWindowAttention(wavelet='db1', level=4, mode='zero',
+                        WaveletWindowAttention(wavelet='db1', 
+                                                level=[2,3,4], 
+                                                mode='zero',
                                                 dim=256,
                                                 heads=4,
                                                 dim_head=64,
